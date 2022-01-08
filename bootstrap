@@ -1,0 +1,16 @@
+#!/bin/sh
+
+set -e
+
+! [ -e compile ] && {
+	printf '%s\n' "${0##*/}: "'Run ./configure to generate ./compile' >&2
+	exit 1
+}
+
+export PATH="$PWD:$PATH"
+alias redo-ifchange=:
+for r in redo redo-ifchange redo-ifcreate
+do
+	set -- "$r" "$r" "$r"
+	. ./"$r".do
+done

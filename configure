@@ -1,0 +1,33 @@
+#!/bin/sh
+
+cc=${CC:-cc}
+cflags='-std=c99 -Wpedantic -Wall -Werror'
+cppflags='-D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L'
+
+dbg=${DEBUG:-n}
+
+$cc --version | grep GCC > /dev/null &&
+	cflags="$cflags -Wno-format-overflow"
+
+if [ "$dbg" = y ]
+then
+	cflags="$cflags -O0 -g"
+	cppflags="$cppflags -DDBG=1"
+else
+	cflags="$cflags -O2"
+	cppflags="$cppflags -DDBG=0"
+	dbg=n
+fi
+
+cat << EOF >&2
+configuration options:
+CC = $cc
+DEBUG = $dbg
+EOF
+
+cat << EOF > compile
+#!/bin/sh
+$cc $cflags $cppflags "\$@"
+EOF
+
+chmod +x compile

@@ -1,0 +1,21 @@
+baredo: an implementation of the redo build system.
+
+Implemented: redo, redo-ifchange, redo-ifcreate
+
+No options implemented.
+Manual pages not yet written, but this (documentation about another redo
+implementation) should be informative: https://redo.readthedocs.io/en/latest
+
+TODO: write a REDME file that actually says something useful
+
+Requires a POSIX envirnment.
+
+Build with
+	# configure using environment variables
+	# e.g. select C compiler via env CC=mycc ./configure
+	# you can also edit the generated ./compile script
+	./configure
+	./bootstrap
+
+Install to /pref/bin with
+	env PREFIX=/pref ./redo install
