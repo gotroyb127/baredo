@@ -61,13 +61,13 @@ struct {
 const char *prognm;
 const char shell[]      = "/bin/sh";
 const char shellflags[] = "-e";
-const char redir[]      = ".redo"; /* directory redo expects use exclusively */
+const char redir[]      = ".redo"; /* directory redo expects to use exclusively */
 
 /* function declerations */
 int envgetn(const char *name, FPARS(long long, min, max, def));
 int envsetn(const char *name, long long n);
 char *normpath(char *abs, size_t n, FPARS(const char, *path, *relto));
-char *relpath(char *rlp, FPARS(const char, *path, *relto));
+char *relpath(char *rlp, size_t n, FPARS(const char, *path, *relto));
 int mkpath(char *path, mode_t mode);
 int dofisok(const char *pth, int depfd);
 int finddof(const char *trg, struct dofile *df, int depfd);
@@ -172,7 +172,7 @@ normpath(char *abs, size_t n, FPARS(const char, *path, *relto))
 /* path, relto normalized absolute paths
    relto is a directory */
 char *
-relpath(char *rlp, FPARS(const char, *path, *relto))
+relpath(char *rlp, size_t n, FPARS(const char, *path, *relto))
 {
 	const char *p, *r;
 	char *d;
@@ -180,10 +180,14 @@ relpath(char *rlp, FPARS(const char, *path, *relto))
 	d = rlp;
 	p = pthpcmp(path, relto);
 	if (*(r = relto + (p - path) - 1))
-		do
+		do {
+			if (n <= 3)
+				return NULL;
+			n -= 3;
 			d = stpcpy(d, "../");
-		while ((r = strchr(r+1, '/')));
-	strcpy(d, p);
+		} while ((r = strchr(r+1, '/')));
+	if (strlcpy(d, p, n) >= n)
+		return NULL;
 	return rlp;
 }
 
@@ -389,8 +393,9 @@ fputdep(FILE *f, int t, FPARS(const char, *fnm, *trg))
 		fwrite(&st.st_ctim, sizeof st.st_ctim, 1, f);
 	}
 	strlcpy(tdir, trg, strrchr(trg, '/') - trg);
-	fputs(relpath(rlp, fnm, tdir), f);
-
+	if (!relpath(rlp, sizeof rlp, fnm, tdir))
+		perrand(return 0, "%s", strerror(ENAMETOOLONG));
+	fputs(rlp, f);
 	fwrite("", 1, 1, f);
 	return !ferror(f);
 }
@@ -494,14 +499,19 @@ depchanged(struct dep *dep, int tdirfd)
 void
 prstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth))
 {
+	const char *p;
 	char rlp[PATH_MAX];
 	int i;
 
 	eprintf("redo %s ", ok ? "ok" : "err");
 	for (i = 0; i < lvl; i++)
 		eprintf(". ");
-	eprintf("%s", relpath(rlp, trg, prog.topwd));
-	eprintf(" (%s)\n", relpath(rlp, dfpth, prog.topwd));
+
+	p = relpath(rlp, sizeof rlp, trg, prog.topwd) ? rlp : trg;
+	eprintf("%s", p);
+
+	p = relpath(rlp, sizeof rlp, dfpth, prog.topwd) ? rlp : dfpth;
+	eprintf(" (%s)\n", p);
 }
 
 /* if a lockfile exists then either
@@ -607,8 +617,8 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 
 	switch (acquirelck(&lckfd, getlckfnm(lckfnm, trg))) {
 	case DEPCYCL:
-		perrf("'%s': dependency cycle detected",
-			relpath(tmp, trg, prog.topwd));
+		perrf("'%s': dependency cycle detected", relpath(tmp,
+			sizeof tmp, trg, prog.topwd) ? tmp : trg);
 		/* fallthrough */
 	default:
 		/* fallthrough */
