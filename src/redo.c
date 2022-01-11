@@ -38,7 +38,7 @@ struct dep {
 
 struct {
 	pid_t pid, toppid;
-	mode_t mode;
+	mode_t dmode, fmode;
 	int lvl;
 	int pdepfd; /* fd in which parents expects dependency reporting */
 	char topwd[PATH_MAX];
@@ -289,6 +289,8 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 	if ((fd1 = mkstemp(df->fd1f)) < 0)
 		perrand(ret(DOFERR), "mkstemp: '%s'", df->fd1f);
 	unlfd1f = 1;
+	if (fchmod(fd1, prog.fmode) < 0) /* respect umask */
+		perrand(ret(DOFERR), "fchmod: '%s'", df->fd1f);
 
 	sprintf(df->arg3, "%s.%d", df->fd1f, prog.pid);
 	if (!access(df->arg3, F_OK))
@@ -526,7 +528,6 @@ int
 acquirelck(int *fd, const char *lckfnm)
 {
 	struct flock rdl, wrl;
-	mode_t mode;
 	pid_t pid;
 	int lckfd, r;
 
@@ -546,8 +547,7 @@ acquirelck(int *fd, const char *lckfnm)
 	rdl.l_start = 1;
 	rdl.l_len = 1;
 
-	mode = prog.mode & ~(0111);
-	if ((lckfd = open(lckfnm, O_RDWR|O_CREAT|O_CLOEXEC, mode)) < 0)
+	if ((lckfd = open(lckfnm, O_RDWR|O_CREAT|O_CLOEXEC, prog.fmode)) < 0)
 		perrand(ret(LCKERR), "open: '%s", lckfnm);
 	if (fcntl(lckfd, F_SETLK, &wrl) < 0) {
 		if (errno != EAGAIN && errno != EACCES)
@@ -612,7 +612,7 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 	/* create required path */
 	s = (s = strrchr(df.arg1, '/')) ? s+1 : df.arg1;
 	sprintf(tmp, "%.*s%s", (int)(s - df.arg1), df.arg1, redir);
-	if (mkpath(tmp, prog.mode) < 0)
+	if (mkpath(tmp, prog.dmode) < 0)
 		perrand(ret(0), "mkpath: '%s'", tmp);
 
 	switch (acquirelck(&lckfd, getlckfnm(lckfnm, trg))) {
@@ -758,11 +758,13 @@ vredo(RedoFn redofn, char *trgv[])
 void
 setup(void)
 {
+	mode_t mask;
 	const char *d;
 	char *e;
 	size_t n;
 
-	prog.mode = 0777;
+	umask(mask = umask(0)); /* get and restore umask */
+	prog.fmode = (prog.dmode = 0777 & ~mask) & ~0111;
 	prog.pid = getpid();
 
 	if (!getcwd(prog.wd, sizeof prog.wd))
