@@ -565,7 +565,7 @@ acquirelck(int *fd, const char *lckfnm)
 			perrand(ret(LCKERR), "fcntl: '%s'", lckfnm);
 		ret(LCKREL); /* lock has been released */
 	}
-	if (dowrite(lckfd, &prog.pid, sizeof(pid_t)) < 0)
+	if (dowrite(lckfd, &prog.toppid, sizeof(pid_t)) < 0)
 		perrand(ret(LCKERR), "write: '%s'", lckfnm);
 	/* notify that it is safe to read the pid */
 	rdl.l_type = F_UNLCK;
