@@ -2,7 +2,7 @@
 
 cc=${CC:-cc}
 cflags='-std=c99 -Wpedantic -Wall -Werror'
-cppflags='-D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200809L'
+cppflags='-D_POSIX_C_SOURCE=200809L'
 
 dbg=${DEBUG:-n}
 
@@ -20,14 +20,14 @@ else
 fi
 
 cat << EOF >&2
-configuration options:
-CC = $cc
-DEBUG = $dbg
+	configuration options:
+	CC = $cc
+	DEBUG = $dbg
 EOF
 
-cat << EOF > compile
-#!/bin/sh
-$cc $cflags $cppflags "\$@"
+cat <<- EOF > compile
+	#!/bin/sh
+	$cc $cflags $cppflags "\$@"
 EOF
 
 chmod +x compile
