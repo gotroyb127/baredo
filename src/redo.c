@@ -17,7 +17,7 @@
 /* possible outcomes of executing a dofile */
 enum { DOFERR, TRGPHONY, TRGOK, };
 
-/* possible outcomes of trying to acquire a lock */
+/* possible outcomes of trying to acquire an exexution lock */
 enum { LCKERR, DEPCYCL, LCKREL, LCKACQ };
 
 typedef int (*RedoFn)(char *, int, int);
@@ -75,13 +75,14 @@ int execdof(struct dofile *fd, FPARS(int, lvl, depfd));
 char *redirentry(char *fnm, FPARS(const char, *trg, *suf));
 char *getlckfnm(char *fnm, const char *trg);
 char *getbifnm(char *fnm, const char *trg);
+int filelck(FPARS(int, fd, cmd, type), FPARS(off_t, start, len));
 int repdep(int depfd, char t, const char *trg);
 int fputdep(FILE *f, int t, FPARS(const char, *fnm, *trg));
 int recdeps(FPARS(const char, *wrfnm, *rdfnm, *trg));
 int fgetdep(FILE *f, struct dep *dep);
 int depchanged(struct dep *dep, int tdirfd);
 void prstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth));
-int acquirelck(int *fd, const char *lckfnm);
+int acqexlck(int *fd, const char *lckfnm);
 int redo(char *trg, FPARS(int, lvl, pdepfd));
 int redoifchange(char *trg, FPARS(int, lvl, pdepfd));
 int redoifcreate(char *trg, FPARS(int, lvl, pdepfd));
@@ -372,10 +373,20 @@ getbifnm(char *fnm, const char *trg)
 }
 
 int
+filelck(FPARS(int, fd, cmd, type), FPARS(off_t, start, len))
+{
+	struct flock fl = {
+		.l_type = type,
+		.l_whence = SEEK_SET,
+		.l_start = start,
+		.l_len = len,
+	};
+	return fcntl(fd, cmd, &fl);
+}
+
+int
 repdep(int depfd, char t, const char *depfnm)
 {
-	if (depfd < 0)
-		return 0;
 	if (dprintf(depfd, "%c%s", t, depfnm) < 0 ||
 	dowrite(depfd, "", 1) < 0)
 		perrfand(return 0, "write");
@@ -425,6 +436,8 @@ recdeps(FPARS(const char, *wrfnm, *rdfnm, *trg))
 		perrand(ret(0), "fopen: '%s'", wrfnm);
 	wfopen = 1;
 
+	if (filelck(fileno(wf), F_SETLKW, F_WRLCK, 0, 0) < 0)
+		perrand(ret(0), "filelck: '%s'", wrfnm);
 	if (!fputdep(wf, ':', trg, trg))
 		ret(0);
 	i = 0;
@@ -516,7 +529,8 @@ prstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth))
 	eprintf(" (%s)\n", p);
 }
 
-/* if a lockfile exists then either
+/* acquire an execution lock
+   if a lockfile exists then either
    . the file has an active lock (the proccess that has the lock is running)
      which is hold by a redo proccess trying to build the same target, so either
    . . there is a dependency cycle <=> the pid stored in the file equals prog.pid
@@ -525,9 +539,8 @@ prstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth))
      and the pid stored in that cannot be trusted
  */
 int
-acquirelck(int *fd, const char *lckfnm)
+acqexlck(int *fd, const char *lckfnm)
 {
-	struct flock rdl, wrl;
 	pid_t pid;
 	int lckfd, r;
 
@@ -537,40 +550,29 @@ acquirelck(int *fd, const char *lckfnm)
 		goto end; \
 	} while (0)
 
-	wrl.l_type = F_WRLCK;
-	wrl.l_whence = SEEK_SET;
-	wrl.l_start = 0;
-	wrl.l_len = 2;
-
-	rdl.l_type = F_RDLCK;
-	rdl.l_whence = SEEK_SET;
-	rdl.l_start = 1;
-	rdl.l_len = 1;
-
 	if ((lckfd = open(lckfnm, O_RDWR|O_CREAT|O_CLOEXEC, prog.fmode)) < 0)
 		perrand(ret(LCKERR), "open: '%s", lckfnm);
-	if (fcntl(lckfd, F_SETLK, &wrl) < 0) {
+	if (filelck(lckfd, F_SETLK, F_WRLCK, 0, 2) < 0) {
 		if (errno != EAGAIN && errno != EACCES)
-			perrand(ret(LCKERR), "fnctl: '%s'", lckfnm);
+			perrand(ret(LCKERR), "filelck: '%s'", lckfnm);
 		/* lock is held by another proccess, wait until it is safe
 		   to read the pid */
-		if (fcntl(lckfd, F_SETLKW, &rdl) < 0)
-			perrand(ret(LCKERR), "fcntl: '%s'", lckfnm);
+		if (filelck(lckfd, F_SETLKW, F_RDLCK, 1, 1) < 0)
+			perrand(ret(LCKERR), "filelck: '%s'", lckfnm);
 		if (doread(lckfd, &pid, sizeof(pid_t)) < 0)
 			perrand(ret(LCKERR), "read: '%s'", lckfnm);
 		if (pid == prog.toppid)
 			ret(DEPCYCL);
 		/* wait until the write lock gets released */
-		if (fcntl(lckfd, F_SETLKW, &wrl) < 0)
-			perrand(ret(LCKERR), "fcntl: '%s'", lckfnm);
+		if (filelck(lckfd, F_SETLKW, F_WRLCK, 0, 2) < 0)
+			perrand(ret(LCKERR), "filelck: '%s'", lckfnm);
 		ret(LCKREL); /* lock has been released */
 	}
 	if (dowrite(lckfd, &prog.toppid, sizeof(pid_t)) < 0)
 		perrand(ret(LCKERR), "write: '%s'", lckfnm);
 	/* notify that it is safe to read the pid */
-	rdl.l_type = F_UNLCK;
-	if (fcntl(lckfd, F_SETLK, &rdl) < 0)
-		perrand(ret(LCKERR), "fcntl: '%s'", lckfnm);
+	if (filelck(lckfd, F_SETLK, F_UNLCK, 1, 1) < 0)
+		perrand(ret(LCKERR), "filelck: '%s'", lckfnm);
 	*fd = lckfd;
 	return LCKACQ;
 end:
@@ -615,7 +617,7 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 	if (mkpath(tmp, prog.dmode) < 0)
 		perrand(ret(0), "mkpath: '%s'", tmp);
 
-	switch (acquirelck(&lckfd, getlckfnm(lckfnm, trg))) {
+	switch (acqexlck(&lckfd, getlckfnm(lckfnm, trg))) {
 	case DEPCYCL:
 		perrf("'%s': dependency cycle detected", relpath(tmp,
 			sizeof tmp, trg, prog.topwd) ? tmp : trg);
@@ -642,7 +644,7 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 
 	if (pdepfd >= 0 && !repdep(pdepfd, '=', trg))
 		ret(0);
-	if (!(r = recdeps(getbifnm(tmp, trg), tmpdepfnm, trg)))
+	if (!recdeps(getbifnm(tmp, trg), tmpdepfnm, trg))
 		ret(0);
 	ret(1);
 end:
@@ -698,8 +700,10 @@ redoifchange(char *trg, FPARS(int, lvl, pdepfd))
 	}
 
 	if (!(bif = fopen(bifnm, "r")))
-		perrand(ret(0), "fopen");
+		perrand(ret(0), "fopen: '%s'", bifnm);
 	clos = 1;
+	if (filelck(fileno(bif), F_SETLKW, F_RDLCK, 0, 0) < 0)
+		perrand(ret(0), "filelck: '%s'", bifnm);
 
 	if (!fgetdep(bif, &dep) || dep.type != ':')
 		goto rebuild;
