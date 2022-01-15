@@ -86,6 +86,7 @@ int acqexlck(int *fd, const char *lckfnm);
 int redo(char *trg, FPARS(int, lvl, pdepfd));
 int redoifchange(char *trg, FPARS(int, lvl, pdepfd));
 int redoifcreate(char *trg, FPARS(int, lvl, pdepfd));
+int redoinfofor(char *trg, FPARS(int, lvl, pdepfd));
 void vredo(RedoFn redofn, char *trgv[]);
 void setup(void);
 
@@ -746,6 +747,57 @@ redoifcreate(char *trg, FPARS(int, lvl, pdepfd))
 	return repdep(pdepfd, '-', trg);
 }
 
+int
+redoinfofor(char *trg, FPARS(int, lvl, pdepfd))
+{
+	FILE *bif;
+	struct dep dep;
+	int clos, c, r;
+	char bifnm[PATH_MAX];
+
+#define ret(V) \
+	do { \
+		r = (V); \
+		goto end; \
+	} while (0)
+
+	clos = 0;
+	if (!(bif = fopen(getbifnm(bifnm, trg), "r"))) {
+		if (errno != ENOENT)
+			perrand(ret(0), "fopen: '%s'", bifnm);
+		char rlp[PATH_MAX];
+		printf("'%s': not build by redo\n",
+			relpath(rlp, sizeof rlp, trg, prog.wd) ? rlp : trg);
+		ret(0);
+	}
+	clos = 1;
+
+	if (filelck(fileno(bif), F_SETLKW, F_RDLCK, 0, 0) < 0)
+		perrand(ret(0), "filelck: '%s'", bifnm);
+	do {
+		if (!fgetdep(bif, &dep))
+			goto invlf;
+		printf("%c ", (char)dep.type);
+		if (dep.type != '-')
+			printf("%lld %lld ", (long long)dep.ctim.tv_sec,
+				(long long)dep.ctim.tv_nsec);
+		printf("%s\n", dep.fnm);
+		if ((c = fgetc(bif)) == EOF)
+			break;
+		ungetc(c, bif);
+	} while (1);
+	if (ferror(bif))
+		perrand(ret(0), "ferror: '%s'", bifnm);
+	ret(1);
+invlf:
+	perrfand(ret(0), "'%s': invalid build-info file", bifnm);
+end:
+	if (clos && fclose(bif) == EOF)
+		perrand(r = 0, "fclose: '%s'", bifnm);
+	return r;
+#undef ret
+}
+
 void
 vredo(RedoFn redofn, char *trgv[])
 {
@@ -813,6 +865,8 @@ main(int argc, char *argv[])
 		redofn = &redoifchange;
 	else if (!strcmp(prognm, "redo-ifcreate"))
 		redofn = &redoifcreate;
+	else if (!strcmp(prognm, "redo-infofor"))
+		redofn = &redoinfofor;
 	else
 		ferrf("'%s': not implemented", prognm);
 	vredo(redofn, argv);
