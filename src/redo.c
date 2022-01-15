@@ -273,7 +273,7 @@ finddof(const char *trg, struct dofile *df, int depfd)
 int
 execdof(struct dofile *df, FPARS(int, lvl, depfd))
 {
-	struct stat st;
+	struct stat st, pst;
 	pid_t pid;
 	int r, ws, fd1;
 	int unlarg3, unlfd1f;
@@ -299,6 +299,13 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 		perrfand(ret(DOFERR), "assertion failed: '%s' exists",
 			df->arg3);
 
+	if (lstat(df->arg1, &pst) < 0) {
+		if (errno != ENOENT)
+			perrand(ret(0), "lstat: '%s'", df->arg1);
+		pst.st_size = -1;
+	} else
+		pst.st_size = 0;
+
 	if ((pid = fork()) < 0)
 		perrand(ret(DOFERR), "fork");
 	if (pid == 0) {
@@ -316,11 +323,18 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 			df->arg3, (char *)0);
 		ferr("execl");
 	}
-
 	wait(&ws);
 	if (!WIFEXITED(ws) || WEXITSTATUS(ws) != 0)
 		ret(DOFERR);
 	unlarg3 = 1;
+
+	if (lstat(df->arg1, &st) < 0) {
+		if (errno != ENOENT)
+			perrand(ret(0), "lstat: '%s'", df->arg1);
+		if (pst.st_size >= 0)
+			perrfand(ret(0), "aborting: .do file has removed $1");
+	} else if (!TSEQ(pst.st_ctim, st.st_ctim))
+		perrfand(ret(0), "aborting: .do file modified $1");
 
 	trg = NULL;
 	if (!access(df->arg3, F_OK))
@@ -328,7 +342,7 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 	if (!stat(df->fd1f, &st) && st.st_size > 0) {
 		if (trg) {
 			unlarg3 = 1;
-			perrf("aborting: dofile created $3 AND wrote to stdout");
+			perrf("aborting: .do file created $3 AND wrote to stdout");
 			ret(DOFERR);
 		}
 		trg = df->fd1f, unlfd1f = 0;
