@@ -1,4 +1,3 @@
 PREFIX=${PREFIX:-/usr/local}
 
-redo all
-cp -f redo redo-ifchange redo-ifcreate "$PREFIX/bin"
+cp -fP redo $(cat lnks) "$PREFIX/bin"

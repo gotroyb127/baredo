@@ -9,8 +9,15 @@ set -e
 
 export PATH="$PWD:$PATH"
 alias redo-ifchange=:
-for r in redo redo-ifchange redo-ifcreate
+
+mk() (
+	s=$2
+	set -- "$1" "$1" "$1"
+	. ./"$s"
+)
+
+mk redo redo.do
+while read l
 do
-	set -- "$r" "$r" "$r"
-	. ./"$r".do
-done
+	mk "$l" default.do
+done < lnks

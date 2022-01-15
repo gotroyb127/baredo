@@ -1,1 +1,1 @@
-rm -f redo redo-ifchange redo-ifcreate
+rm -f redo $(cat lnks)
