@@ -63,6 +63,7 @@ struct {
 	mode_t dmode, fmode;
 	int lvl;
 	int pdepfd; /* fd in which parents expects dependency reporting */
+	int fsync;
 	char topwd[PATH_MAX];
 	char wd[PATH_MAX];
 	char tmpffmt[PATH_MAX];
@@ -73,11 +74,13 @@ struct {
 	const char *topwd;
 	const char *toppid;
 	const char *pdepfd;
+	const char *nofsync;
 } enm = { /* environment variables names */
 	.lvl    = "REDO_LEVEL",
 	.topwd  = "REDO_TOPWD",
 	.toppid = "REDO_TOPPID",
 	.pdepfd = "REDO_DEPFD",
+	.nofsync = "REDO_NOFSYNC",
 };
 
 const char *prognm;
@@ -406,18 +409,20 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 		ret(TRGPHONY);
 
 	/* fsync the target, rename, fsync target's directory */
-	if (trg == df->arg3) {
-		if (fsync(a3fd) < 0)
-			perrand(ret(DOFERR), "fsync: '%s'", df->arg3);
-	} else if (fsync(fd1) < 0)
-		perrand(ret(DOFERR), "fsync: '%s'", df->fd1f);
+	if (prog.fsync) {
+		if (trg == df->arg3) {
+			if (fsync(a3fd) < 0)
+				perrand(ret(DOFERR), "fsync: '%s'", df->arg3);
+		} else if (fsync(fd1) < 0)
+			perrand(ret(DOFERR), "fsync: '%s'", df->fd1f);
+	}
 	if (rename(trg, df->arg1) < 0)
 		perrand(ret(DOFERR), "rename: '%s' -> '%s'", trg, df->arg1);
-	DIRFROMREL(dir, df->arg1,
-		if (dirsync(dir) < 0)
-			perrand(ret(DOFERR), "dirsync: '%s'", dir);
-	);
-
+	if (prog.fsync)
+		DIRFROMREL(dir, df->arg1,
+			if (dirsync(dir) < 0)
+				perrand(ret(DOFERR), "dirsync: '%s'", dir);
+		);
 	ret(TRGOK);
 end:
 	if (fd1 >= 0 && close(fd1) < 0)
@@ -528,14 +533,15 @@ recdeps(FPARS(const char, *bifnm, *rdfnm, *trg))
 		ret(0);
 
 	/* fsync bifile, rename, fsync directory */
-	if (fsync(fileno(wf)) < 0)
+	if (prog.fsync && fsync(fileno(wf)) < 0)
 		perrand(ret(0), "fsync: '%s'", wrfnm);
 	if (rename(wrfnm, bifnm) < 0)
 		perrand(ret(0), "rename: '%s' -> '%s'", wrfnm, bifnm);
-	DIRFROMABS(dir, wrfnm,
-		if (dirsync(dir) < 0)
-			perrand(ret(0), "dirsync: '%s'", dir);
-	);
+	if (prog.fsync)
+		DIRFROMABS(dir, wrfnm,
+			if (dirsync(dir) < 0)
+				perrand(ret(0), "dirsync: '%s'", dir);
+		);
 	ret(1);
 end:
 	if (rfopen && fclose(rf) == EOF)
@@ -929,6 +935,8 @@ setup(void)
 	n = sizeof prog.tmpffmt;
 	if (snprintf(prog.tmpffmt, n, "%s/redo.tmp.XXXXXX", d) >= n)
 		ferrf("$TMPDIR: %s", strerror(ENAMETOOLONG));
+
+	prog.fsync = !envgetn(enm.nofsync, 0, 1, 0);
 }
 
 int
