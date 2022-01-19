@@ -10,7 +10,7 @@
 		eprintf("%s: ", prognm)
 #endif
 
-#define perr(...) \
+#define perrn(...) \
 	do { \
 		int errsv_ = errno; \
 		perrpref(); \
@@ -24,9 +24,9 @@
 		eprintf("\n"); \
 	} while (0)
 
-#define perrand(DOWHAT, ...) \
+#define perrnand(DOWHAT, ...) \
 	do { \
-		perr(__VA_ARGS__); \
+		perrn(__VA_ARGS__); \
 		DOWHAT; \
 	} while (0)
 #define perrfand(DOWHAT, ...) \
@@ -36,7 +36,7 @@
 	} while (0)
 
 #define ferr(...) \
-	perrand(exit(1), __VA_ARGS__)
+	perrnand(exit(1), __VA_ARGS__)
 #define ferrf(...) \
 	perrfand(exit(1), __VA_ARGS__)
 
