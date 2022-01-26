@@ -68,15 +68,15 @@ struct {
 	const char *topwd, *toppid;
 	const char *pdepfd;
 	const char *jmrfd, *jmwfd;
-	const char *nofsync;
+	const char *fsync;
 } enm = { /* environment variables names */
-	.lvl    = "REDO_LEVEL",
-	.topwd  = "REDO_TOPWD",
-	.toppid = "REDO_TOPPID",
-	.pdepfd = "REDO_DEPFD",
-	.jmrfd  = "REDO_JMRFD",
-	.jmwfd  = "REDO_JMWFD",
-	.nofsync = "REDO_NOFSYNC",
+	.lvl    = "_REDO_LEVEL",
+	.topwd  = "_REDO_TOPWD",
+	.toppid = "_REDO_TOPPID",
+	.pdepfd = "_REDO_DEPFD",
+	.jmrfd  = "_REDO_JMRFD",
+	.jmwfd  = "_REDO_JMWFD",
+	.fsync  = "REDO_FSYNC",
 };
 
 const char *prognm;
@@ -85,35 +85,40 @@ const char shellflags[] = "-e";
 const char redir[]      = ".redo"; /* directory redo expects to use exclusively */
 
 /* function declerations */
-long long strton(const char *str, FPARS(long long, min, max, def));
-long long envgetn(const char *nm, FPARS(long long, min, max, def));
-int envgetfd(const char *nm);
-int envsets(FPARS(const char, *nm, *val));
-int envsetn(const char *nm, long long n);
-char *normpath(char *abs, size_t n, FPARS(const char, *path, *relto));
-char *relpath(char *rlp, size_t n, FPARS(const char, *path, *relto));
-int mkpath(char *path, mode_t mode);
-int filelck(FPARS(int, fd, cmd, type), FPARS(off_t, start, len));
-int dirsync(const char *dpth);
-int dofisok(const char *pth, int depfd);
-int finddof(const char *trg, struct dofile *df, int depfd);
-int execdof(struct dofile *fd, FPARS(int, lvl, depfd));
-char *redirentry(char *fnm, FPARS(const char, *trg, *suf));
-char *getlckfnm(char *fnm, const char *trg);
-char *getbifnm(char *fnm, const char *trg);
-int repdep(int depfd, char t, const char *trg);
-int fputdep(FILE *f, int t, FPARS(const char, *fnm, *trg));
-int recdeps(FPARS(const char, *bifnm, *rdfnm, *trg));
-int fgetdep(FILE *f, struct dep *dep);
-int depchanged(struct dep *dep, int tdirfd);
-void prstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth));
-int acqexlck(int *fd, const char *lckfnm);
-int redo(char *trg, FPARS(int, lvl, pdepfd));
-int redoifchange(char *trg, FPARS(int, lvl, pdepfd));
-int redoifcreate(char *trg, FPARS(int, lvl, pdepfd));
-int redoinfofor(char *trg, FPARS(int, lvl, pdepfd));
-void vredo(RedoFn redofn, char *trgv[]);
-int setup(int jobsn);
+static long long strton(const char *str, FPARS(long long, min, max, def));
+static long long envgetn(const char *nm, FPARS(long long, min, max, def));
+static int envgetfd(const char *nm);
+static int envsets(FPARS(const char, *nm, *val));
+static int envsetn(const char *nm, long long n);
+static char *normpath(char *abs, size_t n, FPARS(const char, *path, *relto));
+static char *relpath(char *rlp, size_t n, FPARS(const char, *path, *relto));
+static int mkpath(char *path, mode_t mode);
+static int filelck(FPARS(int, fd, cmd, type), FPARS(off_t, start, len));
+static int dirsync(const char *dpth);
+static int dofisok(const char *pth, int depfd);
+static int finddof(const char *trg, struct dofile *df, int depfd);
+static int execdof(struct dofile *fd, FPARS(int, lvl, depfd));
+static char *redirentry(char *fnm, FPARS(const char, *trg, *suf));
+static char *getlckfnm(char *fnm, const char *trg);
+static char *getbifnm(char *fnm, const char *trg);
+static int repdep(int depfd, char t, const char *trg);
+static int fputdep(FILE *f, int t, FPARS(const char, *fnm, *trg));
+static int recdeps(FPARS(const char, *bifnm, *rdfnm, *trg));
+static int fgetdep(FILE *f, struct dep *dep);
+static int depchanged(struct dep *dep, int tdirfd);
+static void prstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth));
+static int acqexlck(int *fd, const char *lckfnm);
+static int redo(char *trg, FPARS(int, lvl, pdepfd));
+static int redoifchange(char *trg, FPARS(int, lvl, pdepfd));
+static int redoifcreate(char *trg, FPARS(int, lvl, pdepfd));
+static int redoinfofor(char *trg, FPARS(int, lvl, pdepfd));
+static int fredo(RedoFn redofn, char *targ);
+static void jredo(RedoFn, char *trg, FPARS(int, *paral, last));
+static void vredo(RedoFn redofn, char *trgv[]);
+static void vjredo(RedoFn redofn, char *trgv[]);
+static void spawnjm(int jobsn);
+static int setup(int jobsn);
+static void usage(void);
 
 /* function implementations */
 long long
@@ -379,19 +384,20 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 	if ((pid = fork()) < 0)
 		perrnand(ret(DOFERR), "fork");
 	if (pid == 0) {
-		envsetn(enm.pdepfd, depfd);
-		envsetn(enm.lvl, lvl);
+		if (envsetn(enm.pdepfd, depfd) < 0 ||
+		envsetn(enm.lvl, lvl) < 0)
+			ferrn("setenv");
 
 		if (dup2(fd1, STDOUT_FILENO) < 0)
-			ferr("dup2");
+			ferrn("dup2");
 		if (!access(df->pth, X_OK)) {
 			execl(df->pth, df->pth, df->arg1, df->arg2, df->arg3,
 				(char *)0);
-			ferr("execl");
+			ferrn("execl");
 		}
 		execl(shell, shell, shellflags, df->pth, df->arg1, df->arg2,
 			df->arg3, (char *)0);
-		ferr("execl");
+		ferrn("execl");
 	}
 	wait(&ws);
 	if (!WIFEXITED(ws) || WEXITSTATUS(ws) != 0)
@@ -1005,17 +1011,18 @@ spawnjm(int jobsn)
 	int st, r;
 
 	if (pipe(wp) < 0 || pipe(rp) < 0)
-		ferr("pipe");
+		ferrn("pipe");
 	switch (pid = fork()) {
 	case -1:
-		ferr("fork");
+		ferrn("fork");
 	case 0:
 		prog.jmwfd = wp[1];
 		prog.jmrfd = rp[0];
-		envsetn(enm.jmrfd, prog.jmrfd);
-		envsetn(enm.jmwfd, prog.jmwfd);
+		if (envsetn(enm.jmrfd, prog.jmrfd) < 0 ||
+		envsetn(enm.jmwfd, prog.jmwfd) < 0)
+			ferrn("setenv");
 		if (close(wp[0]) < 0 || close(rp[1]) < 0)
-			ferr("close");
+			ferrn("close");
 		return;
 	}
 	if (close(wp[1]) < 0 || close(rp[0]) < 0)
@@ -1055,15 +1062,16 @@ setup(int jobsn)
 	prog.pid = getpid();
 
 	if (!getcwd(prog.wd, sizeof prog.wd))
-		ferr("getcwd");
+		ferrn("getcwd");
 
 	if (!(prog.lvl = envgetn(enm.lvl, 1, INT_MAX, 0))) {
 		strcpy(prog.topwd, prog.wd);
 		prog.toppid = prog.pid;
 		prog.pdepfd = -1;
 
-		envsets(enm.topwd, prog.wd);
-		envsetn(enm.toppid, prog.toppid);
+		if (envsets(enm.topwd, prog.wd) < 0 ||
+		envsetn(enm.toppid, prog.toppid) < 0)
+			ferrn("setenv");
 	} else {
 		if ((prog.toppid = envgetn(enm.toppid, 1, INT_MAX, -1)) < 0)
 			ferrf("invalid environment variable '%s'", enm.toppid);
@@ -1079,7 +1087,7 @@ setup(int jobsn)
 	if (snprintf(prog.tmpffmt, n, "%s/redo.tmp.XXXXXX", d) >= n)
 		ferrf("$TMPDIR: %s", strerror(ENAMETOOLONG));
 
-	prog.fsync = !envgetn(enm.nofsync, 0, 1, 0);
+	prog.fsync = envgetn(enm.fsync, 0, 1, 1);
 
 	return withjm;
 }

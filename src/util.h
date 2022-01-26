@@ -35,7 +35,7 @@
 		DOWHAT; \
 	} while (0)
 
-#define ferr(...) \
+#define ferrn(...) \
 	perrnand(exit(1), __VA_ARGS__)
 #define ferrf(...) \
 	perrfand(exit(1), __VA_ARGS__)
