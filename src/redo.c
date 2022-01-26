@@ -9,6 +9,8 @@
 #include <fcntl.h>
 
 #include "util.h"
+#include "jobmgr.h"
+#include "arg.h"
 
 /* max number of chars added to valid paths as suffix */
 #define PTHMAXSUF  (sizeof redir + NAME_MAX)
@@ -28,7 +30,7 @@
 	} while (0)
 
 /* possible outcomes of executing a .do file */
-enum { DOFERR, TRGPHONY, TRGOK, };
+enum { DOFERR, TRGPHONY, TRGOK };
 
 /* possible outcomes of trying to acquire an exexution lock */
 enum { LCKERR, DEPCYCL, LCKREL, LCKACQ };
@@ -58,19 +60,22 @@ struct {
 	char topwd[PATH_MAX];
 	char wd[PATH_MAX];
 	char tmpffmt[PATH_MAX];
+	int jmrfd, jmwfd;
 } prog;
 
 struct {
 	const char *lvl;
-	const char *topwd;
-	const char *toppid;
+	const char *topwd, *toppid;
 	const char *pdepfd;
+	const char *jmrfd, *jmwfd;
 	const char *nofsync;
 } enm = { /* environment variables names */
 	.lvl    = "REDO_LEVEL",
 	.topwd  = "REDO_TOPWD",
 	.toppid = "REDO_TOPPID",
 	.pdepfd = "REDO_DEPFD",
+	.jmrfd  = "REDO_JMRFD",
+	.jmwfd  = "REDO_JMWFD",
 	.nofsync = "REDO_NOFSYNC",
 };
 
@@ -80,8 +85,11 @@ const char shellflags[] = "-e";
 const char redir[]      = ".redo"; /* directory redo expects to use exclusively */
 
 /* function declerations */
-long long envgetn(const char *name, FPARS(long long, min, max, def));
-int envsetn(const char *name, long long n);
+long long strton(const char *str, FPARS(long long, min, max, def));
+long long envgetn(const char *nm, FPARS(long long, min, max, def));
+int envgetfd(const char *nm);
+int envsets(FPARS(const char, *nm, *val));
+int envsetn(const char *nm, long long n);
 char *normpath(char *abs, size_t n, FPARS(const char, *path, *relto));
 char *relpath(char *rlp, size_t n, FPARS(const char, *path, *relto));
 int mkpath(char *path, mode_t mode);
@@ -105,32 +113,50 @@ int redoifchange(char *trg, FPARS(int, lvl, pdepfd));
 int redoifcreate(char *trg, FPARS(int, lvl, pdepfd));
 int redoinfofor(char *trg, FPARS(int, lvl, pdepfd));
 void vredo(RedoFn redofn, char *trgv[]);
-void setup(void);
+int setup(int jobsn);
 
 /* function implementations */
 long long
-envgetn(const char *name, FPARS(long long, min, max, def))
+strton(const char *str, FPARS(long long, min, max, def))
 {
 	long long n;
-	char *v, *e;
+	char *e;
 
-	if (!(v = getenv(name)))
-		return def;
-	n = strtoll(v, &e, 10);
-	if (*v && *e)
-		return def;
-	if (n < min || n > max)
+	n = strtoll(str, &e, 10);
+	if ((*str && *e) || n < min || n > max)
 		return def;
 	return n;
 }
 
+long long
+envgetn(const char *nm, FPARS(long long, min, max, def))
+{
+	char *v;
+
+	if (!(v = getenv(nm)))
+		return def;
+	return strton(v, min, max, def);
+}
+
 int
-envsetn(const char *name, long long n)
+envgetfd(const char *nm)
+{
+	return envgetn(nm, 0, INT_MAX, -1);
+}
+
+int
+envsets(FPARS(const char, *nm, *val))
+{
+	return setenv(nm, val, 1);
+}
+
+int
+envsetn(const char *nm, long long n)
 {
 	char s[32];
 
 	snprintf(s, sizeof s, "%lld", n);
-	return setenv(name, s, 1);
+	return envsets(nm, s);
 }
 
 /* convert path to a normalized absolute path in abs,
@@ -587,7 +613,7 @@ depchanged(struct dep *dep, int tdirfd)
 		if (!fstatat(tdirfd, dep->fnm, &st, AT_SYMLINK_NOFOLLOW) &&
 		TSEQ(dep->ctim, st.st_ctim))
 			return 0;
-	bcase '-':
+	case '-':
 		if (faccessat(tdirfd, dep->fnm, F_OK, AT_SYMLINK_NOFOLLOW))
 			return 0;
 	}
@@ -597,19 +623,21 @@ depchanged(struct dep *dep, int tdirfd)
 void
 prstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth))
 {
-	const char *p;
 	char rlp[PATH_MAX];
 	int i;
+
+	if (filelck(STDERR_FILENO, F_SETLKW, F_WRLCK, 0, 0) < 0)
+		perrnand(return, "filelck: /dev/stderr");
 
 	eprintf("redo %s ", ok ? "ok" : "err");
 	for (i = 0; i < lvl; i++)
 		eprintf(". ");
+	eprintf("%s", relpath(rlp, sizeof rlp, trg, prog.topwd) ? rlp : trg);
+	eprintf(" (%s)\n", relpath(rlp, sizeof rlp, dfpth, prog.topwd) ?
+		rlp : dfpth);
 
-	p = relpath(rlp, sizeof rlp, trg, prog.topwd) ? rlp : trg;
-	eprintf("%s", p);
-
-	p = relpath(rlp, sizeof rlp, dfpth, prog.topwd) ? rlp : dfpth;
-	eprintf(" (%s)\n", p);
+	if (filelck(STDERR_FILENO, F_SETLK, F_UNLCK, 0, 0) < 0)
+		perrnand(return, "filelck: /dev/stderr");
 }
 
 /* acquire an execution lock
@@ -703,16 +731,14 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 	case DEPCYCL:
 		perrf("'%s': dependency cycle detected", relpath(tmp,
 			sizeof tmp, trg, prog.topwd) ? tmp : trg);
-		/* fallthrough */
 	default:
-		/* fallthrough */
 	case LCKERR:
 		lckfd = -1;
 		ret(0);
-	bcase LCKREL:
+	case LCKREL:
 		lckfd = -1;
 		ret(redoifchange(trg, lvl, pdepfd));
-	bcase LCKACQ:
+	case LCKACQ:
 		break;
 	}
 
@@ -880,26 +906,149 @@ end:
 #undef ret
 }
 
-void
-vredo(RedoFn redofn, char *trgv[])
+int
+fredo(RedoFn redofn, char *targ)
 {
 	char trg[PATH_MAX];
 
-	for (; *trgv; trgv++) {
-		if (!normpath(trg, sizeof trg - PTHMAXSUF, *trgv, prog.wd))
-			ferrf("'%s': %s", *trgv, strerror(ENAMETOOLONG));
-		if (!redofn(trg, prog.lvl, prog.pdepfd))
-			exit(1);
-	}
+	if (!normpath(trg, sizeof trg - PTHMAXSUF, targ, prog.wd))
+		perrfand(return 0, "'%s': %s", targ, strerror(ENAMETOOLONG));
+
+	return redofn(trg, prog.lvl, prog.pdepfd);
 }
 
 void
-setup(void)
+jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 {
+	int s, w, r, msg, st;
+
+#define ex(V) \
+	do { \
+		s = (V); \
+		goto end; \
+	} while (0)
+
+	w = 0;
+	if (!last || *paral) {
+		msg = !*paral ? HASJAVAIL : NEWJREQ;
+		if (dowrite(prog.jmwfd, &msg, sizeof msg) < 0)
+			perrnand(ex(1), "write");
+
+		switch (read(prog.jmrfd, &r, sizeof r)) {
+		case -1:
+			perrn("read");
+		case 0:
+			ex(1);
+		}
+		if (!last && (*paral || r)) {
+			switch (fork()) {
+			case -1:
+				perrnand(ex(1), "fork");
+			case 0:
+				*paral = 1;
+				prog.pid = getpid();
+				return;
+			default:
+				w = 1;
+			}
+		}
+	}
+
+	s = fredo(redofn, trg);
+	if (!s || *paral) {
+		msg = s ? JOBDONE : JOBERR;
+		if (dowrite(prog.jmwfd, &msg, sizeof msg) < 0)
+			perrnand(ex(1), "write");
+	}
+	if (!*paral) {
+		if (w)
+			ex(!s);
+		if (s)
+			return;
+		ex(1);
+	}
+	ex(!s);
+end:
+	if (w) {
+		if (wait(&st) < 0)
+			perrnand(s = 0, "wait");
+		s = s || !WIFEXITED(st) || WEXITSTATUS(st);
+	}
+	exit(s);
+#undef ex
+}
+
+void
+vredo(RedoFn redofn, char *trgv[])
+{
+	for (; *trgv; trgv++)
+		if (!fredo(redofn, *trgv))
+			exit(1);
+}
+
+void
+vjredo(RedoFn redofn, char *trgv[])
+{
+	int paral;
+
+	paral = 0;
+	for (; *trgv; trgv++)
+		jredo(redofn, *trgv, &paral, !trgv[1]);
+}
+
+/* spawn job manager, non-jm child returns */
+void
+spawnjm(int jobsn)
+{
+	pid_t pid;
+	int wp[2], rp[2];
+	int st, r;
+
+	if (pipe(wp) < 0 || pipe(rp) < 0)
+		ferr("pipe");
+	switch (pid = fork()) {
+	case -1:
+		ferr("fork");
+	case 0:
+		prog.jmwfd = wp[1];
+		prog.jmrfd = rp[0];
+		envsetn(enm.jmrfd, prog.jmrfd);
+		envsetn(enm.jmwfd, prog.jmwfd);
+		if (close(wp[0]) < 0 || close(rp[1]) < 0)
+			ferr("close");
+		return;
+	}
+	if (close(wp[1]) < 0 || close(rp[0]) < 0)
+		perrnand(goto wt, "close");
+
+	r = jmrun(jobsn, wp[0], rp[1]);
+wt:
+	if (wait(&st) < 0)
+		perrnand(r = 1, "wait");
+	exit(!r || !WIFEXITED(st) || WEXITSTATUS(st));
+}
+
+int
+setup(int jobsn)
+{
+	int withjm;
 	mode_t mask;
 	const char *d;
 	char *e;
 	size_t n;
+
+	withjm = 0;
+	if ((prog.jmrfd = envgetfd(enm.jmrfd)) < 0) {
+		if (jobsn) {
+			spawnjm(jobsn);
+			withjm = 1;
+		}
+	} else {
+		withjm = 1;
+		if ((prog.jmwfd = envgetfd(enm.jmwfd)) < 0)
+			ferrf("invalid environment values for '%s' and '%s'",
+				enm.jmrfd, enm.jmwfd);
+	}
 
 	umask(mask = umask(0)); /* get and restore umask */
 	prog.fmode = (prog.dmode = 0777 & ~mask) & ~0111;
@@ -913,12 +1062,12 @@ setup(void)
 		prog.toppid = prog.pid;
 		prog.pdepfd = -1;
 
-		setenv(enm.topwd, prog.wd, 1);
+		envsets(enm.topwd, prog.wd);
 		envsetn(enm.toppid, prog.toppid);
 	} else {
 		if ((prog.toppid = envgetn(enm.toppid, 1, INT_MAX, -1)) < 0)
 			ferrf("invalid environment variable '%s'", enm.toppid);
-		if ((prog.pdepfd = envgetn(enm.pdepfd, 0, INT_MAX, -1)) < 0)
+		if ((prog.pdepfd = envgetfd(enm.pdepfd)) < 0)
 			ferrf("invalid environment variable '%s'", enm.pdepfd);
 		if (!(e = getenv(enm.topwd)))
 			ferrf("invalid environment values for '%s' and '%s'",
@@ -931,18 +1080,38 @@ setup(void)
 		ferrf("$TMPDIR: %s", strerror(ENAMETOOLONG));
 
 	prog.fsync = !envgetn(enm.nofsync, 0, 1, 0);
+
+	return withjm;
+}
+
+void
+usage(void)
+{
+	ferrf("redo [-j njobs] targets...");
 }
 
 int
 main(int argc, char *argv[])
 {
 	RedoFn redofn;
+	int jobsn, withjm;
 	char *s;
 
 	prognm = (s = strrchr(argv[0], '/')) ? s+1 : argv[0];
-	argc--, argv++;
 
-	setup();
+	jobsn = 1;
+	ARGBEGIN {
+	case 'j':
+		if (!(s = ARGF()))
+			usage();
+		if ((jobsn = strton(s, 0, INT_MAX, -1)) < 0)
+			perrfand(usage(), "'%s': Invalid number", s);
+	default:
+		usage();
+	} ARGEND
+
+	withjm = setup(jobsn - 1);
+
 	if (!strcmp(prognm, "redo"))
 		redofn = &redo;
 	else if (!strcmp(prognm, "redo-ifchange"))
@@ -953,7 +1122,10 @@ main(int argc, char *argv[])
 		redofn = &redoinfofor;
 	else
 		ferrf("'%s': not implemented", prognm);
-	vredo(redofn, argv);
+	if (withjm)
+		vjredo(redofn, argv);
+	else
+		vredo(redofn, argv);
 
 	return 0;
 }

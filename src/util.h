@@ -4,7 +4,7 @@
 
 #if DBG
 	#define perrpref() \
-		eprintf("%s[%d]: ", prognm, __LINE__)
+		eprintf("%s: %s[%d]:%s: ", prognm, __FILE__, __LINE__, __func__)
 #else
 	#define perrpref() \
 		eprintf("%s: ", prognm)
@@ -40,8 +40,6 @@
 #define ferrf(...) \
 	perrfand(exit(1), __VA_ARGS__)
 
-#define bcase break; case
-
 #define CAT_(A, B) A##B
 #define CAT(A, B) CAT_(A, B)
 #define ARG_8(_0, _1, _2, _3, _4, _5, _6, _7, _8, ...) _8
@@ -65,6 +63,8 @@
 	FPARS_6(type, _1, _2, _3, _4, _5, _6), type _7
 #define FPARS_8(type, _1, _2, _3, _4, _5, _6, _7, _8) \
 	FPARS_7(type, _1, _2, _3, _4, _5, _6, _7), type _8
+
+typedef unsigned uint;
 
 ssize_t dowrite(int fd, const void *buf, size_t n);
 ssize_t doread(int fd, void *buf, size_t n);
