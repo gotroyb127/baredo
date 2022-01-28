@@ -1,1 +1,1 @@
-rm -f redo $(cat lnks)
+rm -f redo

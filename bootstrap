@@ -2,22 +2,16 @@
 
 set -e
 
-! [ -e compile ] && {
-	printf '%s\n' "${0##*/}: "'Run ./configure to generate ./compile' >&2
+! [ -e cc ] && {
+	printf '%s\n' "${0##*/}: "'Run ./configure to generate ./cc' >&2
 	exit 1
 }
 
-export PATH="$PWD:$PATH"
-alias redo-ifchange=:
-
 mk() (
+	alias redo-ifchange=:
 	s=$2
 	set -- "$1" "$1" "$1"
 	. ./"$s"
 )
 
 mk redo redo.do
-while read l
-do
-	mk "$l" default.do
-done < lnks

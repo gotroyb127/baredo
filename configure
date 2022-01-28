@@ -25,9 +25,9 @@ cat << EOF >&2
 	DEBUG = $dbg
 EOF
 
-cat <<- EOF > compile
+cat <<- EOF > cc
 	#!/bin/sh
 	$cc $cflags $cppflags "\$@"
 EOF
 
-chmod +x compile
+chmod +x cc
