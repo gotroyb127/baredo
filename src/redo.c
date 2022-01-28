@@ -374,9 +374,9 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 			df->arg3);
 
 	/* get $1's status to later assert that it has not changed */
-	if (lstat(df->arg1, &pst) < 0) {
+	if (stat(df->arg1, &pst) < 0) {
 		if (errno != ENOENT)
-			perrnand(ret(DOFERR), "lstat: '%s'", df->arg1);
+			perrnand(ret(DOFERR), "stat: '%s'", df->arg1);
 		pst.st_size = -1;
 	} else
 		pst.st_size = 0;
@@ -405,9 +405,9 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 	unlarg3 = 1;
 
 	/* assert that $1 hasn't changed */
-	if (lstat(df->arg1, &st) < 0) {
+	if (stat(df->arg1, &st) < 0) {
 		if (errno != ENOENT)
-			perrnand(ret(DOFERR), "lstat: '%s'", df->arg1);
+			perrnand(ret(DOFERR), "stat: '%s'", df->arg1);
 		if (pst.st_size >= 0)
 			perrfand(ret(DOFERR), "aborting: .do file has removed $1");
 	} else if (!TSEQ(pst.st_ctim, st.st_ctim))
@@ -503,8 +503,8 @@ fputdep(FILE *f, int t, FPARS(const char, *fnm, *trg))
 
 	fputc(t, f);
 	if (t != '-') {
-		if (lstat(fnm, &st))
-			perrnand(return 0, "lstat: '%s'", fnm);
+		if (stat(fnm, &st))
+			perrnand(return 0, "stat: '%s'", fnm);
 		fwrite(&st.st_ctim, sizeof st.st_ctim, 1, f);
 	}
 	strlcpy(tdir, trg, strrchr(trg, '/') - trg);
@@ -616,11 +616,11 @@ depchanged(struct dep *dep, int tdirfd)
 	switch (dep->type) {
 	case ':':
 	case '=':
-		if (!fstatat(tdirfd, dep->fnm, &st, AT_SYMLINK_NOFOLLOW) &&
+		if (!fstatat(tdirfd, dep->fnm, &st, 0) &&
 		TSEQ(dep->ctim, st.st_ctim))
 			return 0;
 	case '-':
-		if (faccessat(tdirfd, dep->fnm, F_OK, AT_SYMLINK_NOFOLLOW))
+		if (faccessat(tdirfd, dep->fnm, F_OK, 0))
 			return 0;
 	}
 	return 1;

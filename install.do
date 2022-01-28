@@ -1,3 +1,7 @@
-PREFIX=${PREFIX:-/usr/local}
+BINDIR=${BINDIR:-${PREFIX:-/usr/local}/bin}
 
-cp -fP redo $(cat lnks) "$PREFIX/bin"
+cp -f redo "$BINDIR"
+for lnk in ifchange ifcreate infofor
+do
+	ln -sf redo "$BINDIR/redo-$lnk"
+done

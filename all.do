@@ -1,1 +1,1 @@
-redo-ifchange redo $(cat lnks)
+redo-ifchange redo
