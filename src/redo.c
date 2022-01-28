@@ -1,12 +1,13 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <limits.h>
+#include <fcntl.h>
 #include <errno.h>
+#include <inttypes.h>
+#include <limits.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <fcntl.h>
 
 #include "util.h"
 #include "jobmgr.h"
@@ -47,7 +48,8 @@ struct dofile {
 
 struct dep {
 	int type;
-	struct timespec ctim;
+	ino_t ino;
+	struct timespec mtim;
 	char fnm[PATH_MAX];
 };
 
@@ -85,11 +87,11 @@ const char shellflags[] = "-e";
 const char redir[]      = ".redo"; /* directory redo expects to use exclusively */
 
 /* function declerations */
-static long long strton(const char *str, FPARS(long long, min, max, def));
-static long long envgetn(const char *nm, FPARS(long long, min, max, def));
+static intmax_t strtoint(const char *str, FPARS(intmax_t, min, max, def));
+static intmax_t envgeti(const char *nm, FPARS(intmax_t, min, max, def));
 static int envgetfd(const char *nm);
 static int envsets(FPARS(const char, *nm, *val));
-static int envsetn(const char *nm, long long n);
+static int envseti(const char *nm, intmax_t n);
 static char *normpath(char *abs, size_t n, FPARS(const char, *path, *relto));
 static char *relpath(char *rlp, size_t n, FPARS(const char, *path, *relto));
 static int mkpath(char *path, mode_t mode);
@@ -121,32 +123,33 @@ static int setup(int jobsn);
 static void usage(void);
 
 /* function implementations */
-long long
-strton(const char *str, FPARS(long long, min, max, def))
+intmax_t
+strtoint(const char *str, FPARS(intmax_t, min, max, def))
 {
-	long long n;
+	intmax_t i;
 	char *e;
 
-	n = strtoll(str, &e, 10);
-	if ((*str && *e) || n < min || n > max)
+	errno = 0;
+	i = strtoimax(str, &e, 10);
+	if ((*str && *e) || i < min || i > max || errno == ERANGE)
 		return def;
-	return n;
+	return i;
 }
 
-long long
-envgetn(const char *nm, FPARS(long long, min, max, def))
+intmax_t
+envgeti(const char *nm, FPARS(intmax_t, min, max, def))
 {
 	char *v;
 
 	if (!(v = getenv(nm)))
 		return def;
-	return strton(v, min, max, def);
+	return strtoint(v, min, max, def);
 }
 
 int
 envgetfd(const char *nm)
 {
-	return envgetn(nm, 0, INT_MAX, -1);
+	return envgeti(nm, 0, INT_MAX, -1);
 }
 
 int
@@ -156,11 +159,14 @@ envsets(FPARS(const char, *nm, *val))
 }
 
 int
-envsetn(const char *nm, long long n)
+envseti(const char *nm, intmax_t n)
 {
 	char s[32];
 
-	snprintf(s, sizeof s, "%lld", n);
+	if (snprintf(s, sizeof s, "%jd", n) >= sizeof s) {
+		errno = ERANGE;
+		return -1;
+	}
 	return envsets(nm, s);
 }
 
@@ -384,9 +390,9 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 	if ((pid = fork()) < 0)
 		perrnand(ret(DOFERR), "fork");
 	if (pid == 0) {
-		if (envsetn(enm.pdepfd, depfd) < 0 ||
-		envsetn(enm.lvl, lvl) < 0)
-			ferrn("setenv");
+		if (envseti(enm.pdepfd, depfd) < 0 ||
+		envseti(enm.lvl, lvl) < 0)
+			ferrn("envseti");
 
 		if (dup2(fd1, STDOUT_FILENO) < 0)
 			ferrn("dup2");
@@ -505,7 +511,8 @@ fputdep(FILE *f, int t, FPARS(const char, *fnm, *trg))
 	if (t != '-') {
 		if (stat(fnm, &st))
 			perrnand(return 0, "stat: '%s'", fnm);
-		fwrite(&st.st_ctim, sizeof st.st_ctim, 1, f);
+		fwrite(&st.st_ino, sizeof st.st_ino, 1, f);
+		fwrite(&st.st_mtim, sizeof st.st_mtim, 1, f);
 	}
 	strlcpy(tdir, trg, strrchr(trg, '/') - trg);
 	if (!relpath(rlp, sizeof rlp, fnm, tdir))
@@ -594,7 +601,8 @@ fgetdep(FILE *f, struct dep *dep)
 		return 0;
 	}
 	if ((dep->type = t) != '-')
-		if (fread(&dep->ctim, sizeof dep->ctim, 1, f) != 1)
+		if (fread(&dep->ino, sizeof dep->ino, 1, f) != 1 ||
+		fread(&dep->mtim, sizeof dep->mtim, 1, f) != 1)
 			return 0;
 	i = 0;
 	while ((c = fgetc(f)) != EOF) {
@@ -617,7 +625,7 @@ depchanged(struct dep *dep, int tdirfd)
 	case ':':
 	case '=':
 		if (!fstatat(tdirfd, dep->fnm, &st, 0) &&
-		TSEQ(dep->ctim, st.st_ctim))
+		dep->ino == st.st_ino && TSEQ(dep->mtim, st.st_mtim))
 			return 0;
 	case '-':
 		if (faccessat(tdirfd, dep->fnm, F_OK, 0))
@@ -893,8 +901,9 @@ redoinfofor(char *trg, FPARS(int, lvl, pdepfd))
 			goto invlf;
 		printf("%c ", (char)dep.type);
 		if (dep.type != '-')
-			printf("%lld %lld ", (long long)dep.ctim.tv_sec,
-				(long long)dep.ctim.tv_nsec);
+			printf("%ju %jd %jd ", (uintmax_t)dep.ino,
+				(intmax_t)dep.mtim.tv_sec,
+				(intmax_t)dep.mtim.tv_nsec);
 		printf("%s\n", dep.fnm);
 		if ((c = fgetc(bif)) == EOF)
 			break;
@@ -1018,9 +1027,9 @@ spawnjm(int jobsn)
 	case 0:
 		prog.jmwfd = wp[1];
 		prog.jmrfd = rp[0];
-		if (envsetn(enm.jmrfd, prog.jmrfd) < 0 ||
-		envsetn(enm.jmwfd, prog.jmwfd) < 0)
-			ferrn("setenv");
+		if (envseti(enm.jmrfd, prog.jmrfd) < 0 ||
+		envseti(enm.jmwfd, prog.jmwfd) < 0)
+			ferrn("envseti");
 		if (close(wp[0]) < 0 || close(rp[1]) < 0)
 			ferrn("close");
 		return;
@@ -1064,16 +1073,17 @@ setup(int jobsn)
 	if (!getcwd(prog.wd, sizeof prog.wd))
 		ferrn("getcwd");
 
-	if (!(prog.lvl = envgetn(enm.lvl, 1, INT_MAX, 0))) {
+	if (!(prog.lvl = envgeti(enm.lvl, 1, INT_MAX, 0))) {
 		strcpy(prog.topwd, prog.wd);
 		prog.toppid = prog.pid;
 		prog.pdepfd = -1;
 
-		if (envsets(enm.topwd, prog.wd) < 0 ||
-		envsetn(enm.toppid, prog.toppid) < 0)
-			ferrn("setenv");
+		if (envsets(enm.topwd, prog.wd) < 0)
+			ferrn("envsets");
+		if (envseti(enm.toppid, prog.toppid) < 0)
+			ferrn("envseti");
 	} else {
-		if ((prog.toppid = envgetn(enm.toppid, 1, INT_MAX, -1)) < 0)
+		if ((prog.toppid = envgeti(enm.toppid, 1, INT_MAX, -1)) < 0)
 			ferrf("invalid environment variable '%s'", enm.toppid);
 		if ((prog.pdepfd = envgetfd(enm.pdepfd)) < 0)
 			ferrf("invalid environment variable '%s'", enm.pdepfd);
@@ -1087,7 +1097,7 @@ setup(int jobsn)
 	if (snprintf(prog.tmpffmt, n, "%s/redo.tmp.XXXXXX", d) >= n)
 		ferrf("$TMPDIR: %s", strerror(ENAMETOOLONG));
 
-	prog.fsync = envgetn(enm.fsync, 0, 1, 1);
+	prog.fsync = envgeti(enm.fsync, 0, 1, 1);
 
 	return withjm;
 }
@@ -1112,7 +1122,7 @@ main(int argc, char *argv[])
 	case 'j':
 		if (!(s = ARGF()))
 			usage();
-		if ((jobsn = strton(s, 0, INT_MAX, -1)) < 0)
+		if ((jobsn = strtoint(s, 0, INT_MAX, -1)) < 0)
 			perrfand(usage(), "'%s': Invalid number", s);
 	default:
 		usage();
