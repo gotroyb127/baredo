@@ -1109,7 +1109,7 @@ setup(int jobsn)
 void
 usage(void)
 {
-	ferrf("redo [-j njobs] targets...");
+	ferrf("usage: redo [-j njobs] targets...");
 }
 
 int
@@ -1125,12 +1125,15 @@ main(int argc, char *argv[])
 	ARGBEGIN {
 	case 'j':
 		if (!(s = ARGF()))
-			usage();
+			perrfand(usage(), "missing argument for -j");
 		if ((jobsn = strtoint(s, 0, INT_MAX, -1)) < 0)
 			perrfand(usage(), "'%s': Invalid number", s);
+		break;
 	default:
-		usage();
+		perrfand(usage(), "-%c: Wrong option", ARGC());
 	} ARGEND
+	if (!argc)
+		perrfand(usage(), "No targets given");
 
 	withjm = setup(jobsn - 1);
 
