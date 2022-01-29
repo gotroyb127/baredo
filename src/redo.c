@@ -416,8 +416,12 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 			perrnand(ret(DOFERR), "stat: '%s'", df->arg1);
 		if (pst.st_size >= 0)
 			perrfand(ret(DOFERR), "aborting: .do file has removed $1");
-	} else if (!TSEQ(pst.st_ctim, st.st_ctim))
-		perrfand(ret(DOFERR), "aborting: .do file modified $1");
+	} else {
+		if (pst.st_size < 0)
+			perrfand(ret(DOFERR), "aborting: .do file has created $1");
+		if (!TSEQ(pst.st_ctim, st.st_ctim))
+			perrfand(ret(DOFERR), "aborting: .do file modified $1");
+	}
 
 	/* determine whether $3 or stdout is the target */
 	trg = NULL;
