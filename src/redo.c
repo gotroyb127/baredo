@@ -1116,7 +1116,7 @@ int
 main(int argc, char *argv[])
 {
 	RedoFn redofn;
-	int jobsn, withjm;
+	int jobsn;
 	char *s;
 
 	prognm = (s = strrchr(argv[0], '/')) ? s+1 : argv[0];
@@ -1135,8 +1135,6 @@ main(int argc, char *argv[])
 	if (!argc)
 		perrfand(usage(), "No targets given");
 
-	withjm = setup(jobsn - 1);
-
 	if (!strcmp(prognm, "redo"))
 		redofn = &redo;
 	else if (!strcmp(prognm, "redo-ifchange"))
@@ -1147,7 +1145,8 @@ main(int argc, char *argv[])
 		redofn = &redoinfofor;
 	else
 		ferrf("'%s': not implemented", prognm);
-	if (withjm)
+
+	if (setup(jobsn - 1))
 		vjredo(redofn, argv);
 	else
 		vredo(redofn, argv);
