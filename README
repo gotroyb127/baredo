@@ -1,21 +1,41 @@
 baredo: an implementation of the redo build system.
+(bare-redo)
 
-Implemented: redo, redo-ifchange, redo-ifcreate
+Requires a POSIX-compatible environment that can compile C99, but no
+external dependencies.
 
-No options implemented.
+Implemented: redo, redo-ifchange, redo-ifcreate, redo-infofor
+
+redo-infofor is used to just print whatever information redo has
+stored after building a target in a more human-readable way, and .do files
+shouldn't rely on its existatnce.
+
+Also running .do files in parallel is supported and controled with the
+'j' flag. E.g. with `redo -j4` at most 3 additional .do files may be executed.
+
+Aside from '-j' no other flags are implemented, but the environmet variable
+`REDO_FSYNC` can be set to 0 to skip explicit calls to fsync(2), which are
+required to ensure that some operations occur atomically.
+
+Also, redo itself relies of a number of environment variables that begin with
+`_REDO_`.
+
 Manual pages not yet written, but this (documentation about another redo
 implementation) should be informative: https://redo.readthedocs.io/en/latest
 
-TODO: write a REDME file that actually says something useful
+BUILDING
 
-Requires a POSIX envirnment.
+If available you can use an already working redo to build with
+	redo all
 
-Build with
+Bootstrap with
 	# configure using environment variables
 	# e.g. select C compiler via env CC=mycc ./configure
-	# you can also edit the generated ./compile script
+	# you can also edit the generated ./cc script
 	./configure
 	./bootstrap
 
 Install to /pref/bin with
 	env PREFIX=/pref ./redo install
+or to /path/dir with
+	env BINDIR=/path/dir ./redo install
