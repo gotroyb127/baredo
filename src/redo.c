@@ -31,7 +31,7 @@
 	} while (0)
 
 /* possible outcomes of executing a .do file */
-enum { DOFERR, TRGPHONY, TRGOK };
+enum { DOFERR, TRGSAME, TRGNEW };
 
 /* possible outcomes of trying to acquire an exexution lock */
 enum { LCKERR, DEPCYCL, LCKREL, LCKACQ };
@@ -405,10 +405,10 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 			df->arg3, (char *)0);
 		ferrn("execl");
 	}
+	unlarg3 = 1;
 	wait(&ws);
 	if (!WIFEXITED(ws) || WEXITSTATUS(ws) != 0)
 		ret(DOFERR);
-	unlarg3 = 1;
 
 	/* assert that $1 hasn't changed */
 	if (stat(df->arg1, &st) < 0) {
@@ -442,7 +442,7 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 		trg = df->fd1f, unlfd1f = 0;
 	}
 	if (!trg)
-		ret(TRGPHONY);
+		ret(TRGSAME);
 
 	/* fsync the target, rename, fsync target's directory */
 	if (prog.fsync) {
@@ -459,7 +459,7 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 			if (dirsync(dir) < 0)
 				perrnand(ret(DOFERR), "dirsync: '%s'", dir);
 		);
-	ret(TRGOK);
+	ret(TRGNEW);
 end:
 	if (fd1 >= 0 && close(fd1) < 0)
 		perrnand(r = DOFERR, "close: '%s'", df->fd1f);
@@ -762,16 +762,18 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 
 	/* exec */
 	ok = execdof(&df, lvl+1, depfd);
-	prstatln(ok >= TRGPHONY, lvl, trg, df.pth);
+	prstatln(ok >= TRGSAME, lvl, trg, df.pth);
 
-	/* don't record dependencies unless target was successfully created */
-	if (ok < TRGOK)
-		ret(ok == TRGPHONY);
+	if (ok < TRGSAME)
+		ret(0);
 
-	if (pdepfd >= 0 && !repdep(pdepfd, '=', trg))
-		ret(0);
-	if (!recdeps(getbifnm(tmp, trg), tmpdepfnm, trg))
-		ret(0);
+	if (!access(trg, F_OK)) {
+		if (pdepfd >= 0 && !repdep(pdepfd, '=', trg))
+			ret(0);
+		if (!recdeps(getbifnm(tmp, trg), tmpdepfnm, trg))
+			ret(0);
+	} else if (errno != ENOENT)
+		perrnand(ret(0), "access: '%s'", trg);
 	ret(1);
 end:
 	if (depfd >= 0) {
