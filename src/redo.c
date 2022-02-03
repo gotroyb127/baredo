@@ -499,9 +499,13 @@ getbifnm(char *fnm, const char *trg)
 int
 repdep(int depfd, char t, const char *depfnm)
 {
+	if (filelck(depfd, F_SETLKW, F_WRLCK, 0, 0) < 0)
+		perrnand(return 0, "filelck");
 	if (dprintf(depfd, "%c%s", t, depfnm) < 0 ||
 	dowrite(depfd, "", 1) < 0)
 		perrfand(return 0, "write");
+	if (filelck(depfd, F_SETLK, F_UNLCK, 0, 0) < 0)
+		perrnand(return 0, "filelck");
 	return 1;
 }
 
