@@ -535,7 +535,6 @@ recdeps(FPARS(const char, *bifnm, *rdfnm, *trg))
 {
 	FILE *rf, *wf;
 	size_t i;
-	int rfopen, wfopen;
 	int c, r;
 	char depln[PATH_MAX+1]; /* type, PATH */
 	char wrfnm[PATH_MAX];
@@ -546,14 +545,12 @@ recdeps(FPARS(const char, *bifnm, *rdfnm, *trg))
 		goto end; \
 	} while (0)
 
+	rf = wf = NULL;
 	sprintf(wrfnm, "%s.t", bifnm); /* write to a temporary file at first */
-	rfopen = wfopen = 0;
 	if (!(rf = fopen(rdfnm, "r")))
 		perrnand(ret(0), "fopen: '%s'", rdfnm);
-	rfopen = 1;
 	if (!(wf = fopen(wrfnm, "w")))
 		perrnand(ret(0), "fopen: '%s'", wrfnm);
-	wfopen = 1;
 
 	if (filelck(fileno(wf), F_SETLKW, F_WRLCK, 0, 0) < 0)
 		perrnand(ret(0), "filelck: '%s'", wrfnm);
@@ -585,9 +582,9 @@ recdeps(FPARS(const char, *bifnm, *rdfnm, *trg))
 		);
 	ret(1);
 end:
-	if (rfopen && fclose(rf) == EOF)
+	if (rf && fclose(rf) == EOF)
 		perrnand(r = 0, "fclose: '%s'", rdfnm);
-	if (wfopen && fclose(wf) == EOF)
+	if (wf && fclose(wf) == EOF)
 		perrnand(r = 0, "fclose: '%s'", wrfnm);
 	return r;
 #undef ret
@@ -802,7 +799,7 @@ redoifchange(char *trg, FPARS(int, lvl, pdepfd))
 	FILE *bif; /* build info file */
 	struct dep dep;
 	int tdirfd;
-	int clbif, r, c;
+	int r, rb, c;
 	char tdir[PATH_MAX], bifnm[PATH_MAX], depfnm[PATH_MAX];
 
 #define ret(V) \
@@ -811,7 +808,7 @@ redoifchange(char *trg, FPARS(int, lvl, pdepfd))
 		goto end; \
 	} while (0)
 
-	clbif = 0, tdirfd = -1;
+	rb = 0, tdirfd = -1, bif = NULL;
 	/* target doesn't exist */
 	if (access(trg, F_OK))
 		goto rebuild;
@@ -832,7 +829,6 @@ redoifchange(char *trg, FPARS(int, lvl, pdepfd))
 
 	if (!(bif = fopen(bifnm, "r")))
 		perrnand(ret(0), "fopen: '%s'", bifnm);
-	clbif = 1;
 	if (filelck(fileno(bif), F_SETLKW, F_RDLCK, 0, 0) < 0)
 		perrnand(ret(0), "filelck: '%s'", bifnm);
 
@@ -861,12 +857,14 @@ redoifchange(char *trg, FPARS(int, lvl, pdepfd))
 		perrnand(ret(0), "repdep: '%s'", trg);
 	ret(1);
 rebuild:
-	ret(redo(trg, lvl, pdepfd));
+	rb = 1;
 end:
 	if (tdirfd >= 0 && close(tdirfd) < 0)
 		perrnand(r = 0, "close: '%s'", tdir);
-	if (clbif && fclose(bif) == EOF)
+	if (bif && fclose(bif) == EOF)
 		perrnand(r = 0, "fclose: '%s'", bifnm);
+	if (rb)
+		r = redo(trg, lvl, pdepfd);
 	return r;
 #undef ret
 }
@@ -884,7 +882,7 @@ redoinfofor(char *trg, FPARS(int, lvl, pdepfd))
 {
 	FILE *bif;
 	struct dep dep;
-	int clbif, c, r;
+	int c, r;
 	char bifnm[PATH_MAX];
 
 #define ret(V) \
@@ -893,7 +891,7 @@ redoinfofor(char *trg, FPARS(int, lvl, pdepfd))
 		goto end; \
 	} while (0)
 
-	clbif = 0;
+	bif = NULL;
 	if (!(bif = fopen(getbifnm(bifnm, trg), "r"))) {
 		if (errno != ENOENT)
 			perrnand(ret(0), "fopen: '%s'", bifnm);
@@ -902,7 +900,6 @@ redoinfofor(char *trg, FPARS(int, lvl, pdepfd))
 			relpath(rlp, sizeof rlp, trg, prog.wd) ? rlp : trg);
 		ret(0);
 	}
-	clbif = 1;
 
 	if (filelck(fileno(bif), F_SETLKW, F_RDLCK, 0, 0) < 0)
 		perrnand(ret(0), "filelck: '%s'", bifnm);
@@ -925,7 +922,7 @@ redoinfofor(char *trg, FPARS(int, lvl, pdepfd))
 invlf:
 	perrfand(ret(0), "'%s': invalid build-info file", bifnm);
 end:
-	if (clbif && fclose(bif) == EOF)
+	if (bif && fclose(bif) == EOF)
 		perrnand(r = 0, "fclose: '%s'", bifnm);
 	return r;
 #undef ret
@@ -945,7 +942,8 @@ fredo(RedoFn redofn, char *targ)
 void
 jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 {
-	int s, w, r, msg, st;
+	pid_t cld; /* child's pid, if any */
+	int s, r, msg, st;
 
 #define ex(V) \
 	do { \
@@ -953,7 +951,7 @@ jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 		goto end; \
 	} while (0)
 
-	w = 0;
+	cld = -1;
 	if (!last || *paral) {
 		msg = !*paral ? HASJAVAIL : NEWJREQ;
 		if (dowrite(prog.jmwfd, &msg, sizeof msg) < 0)
@@ -965,18 +963,15 @@ jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 		case 0:
 			ex(1);
 		}
-		if (!last && (*paral || r)) {
-			switch (fork()) {
+		if (!last && (*paral || r))
+			switch (cld = fork()) {
 			case -1:
 				perrnand(ex(1), "fork");
 			case 0:
 				*paral = 1;
 				prog.pid = getpid();
 				return;
-			default:
-				w = 1;
 			}
-		}
 	}
 
 	s = fredo(redofn, trg);
@@ -986,7 +981,7 @@ jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 			perrnand(ex(1), "write");
 	}
 	if (!*paral) {
-		if (w)
+		if (cld >= 0)
 			ex(!s);
 		if (s)
 			return;
@@ -994,7 +989,7 @@ jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 	}
 	ex(!s);
 end:
-	if (w) {
+	if (cld >= 0) {
 		if (wait(&st) < 0)
 			perrnand(s = 0, "wait");
 		s = s || !WIFEXITED(st) || WEXITSTATUS(st);
