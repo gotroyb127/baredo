@@ -501,9 +501,11 @@ repdep(int depfd, char t, const char *depfnm)
 {
 	if (filelck(depfd, F_SETLKW, F_WRLCK, 0, 0) < 0)
 		perrnand(return 0, "filelck");
+
 	if (dprintf(depfd, "%c%s", t, depfnm) < 0 ||
 	dowrite(depfd, "", 1) < 0)
 		perrfand(return 0, "write");
+
 	if (filelck(depfd, F_SETLK, F_UNLCK, 0, 0) < 0)
 		perrnand(return 0, "filelck");
 	return 1;
@@ -517,14 +519,23 @@ fputdep(FILE *f, int t, FPARS(const char, *fnm, *trg))
 
 	fputc(t, f);
 	if (t != '-') {
-		if (stat(fnm, &st))
+		if (stat(fnm, &st) < 0)
 			perrnand(return 0, "stat: '%s'", fnm);
 		fwrite(&st.st_ino, sizeof st.st_ino, 1, f);
 		fwrite(&st.st_mtim, sizeof st.st_mtim, 1, f);
+	} else {
+		if (access(fnm, F_OK) < 0) {
+			if (errno != ENOENT)
+				perrnand(return 0, "access");
+		} else
+			perrfand(return 0, "'%s': ifcreate dependency error: %s",
+				fnm, strerror(EEXIST));
 	}
+
 	strlcpy(tdir, trg, strrchr(trg, '/') - trg);
 	if (!relpath(rlp, sizeof rlp, fnm, tdir))
 		perrnand(return 0, "%s", strerror(ENAMETOOLONG));
+
 	fputs(rlp, f);
 	fwrite("", 1, 1, f);
 	return !ferror(f);
