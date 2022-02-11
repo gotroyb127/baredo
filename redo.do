@@ -1,6 +1,4 @@
-src=$(find src -name '*.c')
-hdr=$(find src -name '*.h')
+redo-ifchange cc objfs
+redo-ifchange $(cat objfs)
 
-redo-ifchange cc $src $hdr
-
-./cc $src -o "$3"
+./cc -o "$3" $(cat objfs)

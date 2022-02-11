@@ -1,1 +1,1 @@
-rm -f redo
+rm -f redo objfs $(cat objfs)

@@ -6,8 +6,10 @@ cppflags='-D_POSIX_C_SOURCE=200809L'
 
 dbg=${DEBUG:-n}
 
-$cc --version | grep GCC > /dev/null &&
+$cc --version | grep GCC >/dev/null &&
 	cflags="$cflags -Wno-format-overflow"
+$cc --version | grep clang >/dev/null &&
+	cflags="$cflags -Wno-unused-command-line-argument"
 
 if [ "$dbg" = y ]
 then

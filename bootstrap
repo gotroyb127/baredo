@@ -3,15 +3,8 @@
 set -e
 
 ! [ -e cc ] && {
-	printf '%s\n' "${0##*/}: "'Run ./configure to generate ./cc' >&2
+	printf '%s\n' "${0##*/}: "'Run ./gencc to generate ./cc' >&2
 	exit 1
 }
 
-mk() (
-	alias redo-ifchange=:
-	s=$2
-	set -- "$1" "$1" "$1"
-	. ./"$s"
-)
-
-mk redo redo.do
+./cc -o redo $(awk '{print "src/" $0}' srcfs)
