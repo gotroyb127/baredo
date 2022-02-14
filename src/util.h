@@ -5,7 +5,9 @@
 #if DBG
 	#define perrpref() \
 		eprintf("%s: %s[%d]:%s: ", prognm, __FILE__, __LINE__, __func__)
+	#define dbgf perrf
 #else
+	#define dbgf(...) ;
 	#define perrpref() \
 		eprintf("%s: ", prognm)
 #endif

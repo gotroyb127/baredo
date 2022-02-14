@@ -12,7 +12,7 @@ extern const char *prognm;
 jmp_buf jbuf;
 
 static void
-reply(int wfd, int r)
+put(int wfd, int r)
 {
 	if (dowrite(wfd, &r, sizeof r) < 0)
 		perrnand(longjmp(jbuf, 1), "write");
@@ -37,6 +37,8 @@ jmrun(FPARS(int, jobsn, rfd, wfd))
 
 	maxrjs = jobsn > 0 ? jobsn : UINT_MAX;
 	rjobs = pjobs = 0;
+
+	put(wfd, 1);
 	while (1) {
 		switch (read(rfd, &msg, sizeof msg)) {
 		case -1:
@@ -45,20 +47,20 @@ jmrun(FPARS(int, jobsn, rfd, wfd))
 			ret(1);
 		}
 		switch (msg) {
-		case HASJAVAIL:
-			reply(wfd, rjobs < maxrjs);
-			break;
-		case NEWJREQ:
-			if (rjobs < maxrjs)
-				reply(wfd, 1), rjobs++;
-			else
+		case JOBNEW:
+			if (rjobs < maxrjs) {
+				if (++rjobs < maxrjs)
+					put(wfd, 1);
+			} else
 				pjobs++;
 			break;
 		case JOBDONE:
 			if (pjobs)
-				reply(wfd, 1), pjobs--;
+				put(wfd, 1), pjobs--;
 			else if (!rjobs--)
 				perrfand(ret(0), "Invalid message: no jobs are running");
+			else if (rjobs == maxrjs-1)
+				put(wfd, 1);
 			break;
 		case JOBERR:
 		default:

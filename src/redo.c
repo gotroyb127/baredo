@@ -1,5 +1,6 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <poll.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <inttypes.h>
@@ -62,6 +63,7 @@ struct {
 	char topwd[PATH_MAX];
 	char wd[PATH_MAX];
 	char tmpffmt[PATH_MAX];
+	int withjm;
 	int jmrfd, jmwfd;
 } prog;
 
@@ -119,7 +121,7 @@ static void jredo(RedoFn, char *trg, FPARS(int, *paral, last));
 static void vredo(RedoFn redofn, char *trgv[]);
 static void vjredo(RedoFn redofn, char *trgv[]);
 static void spawnjm(int jobsn);
-static int setup(int jobsn);
+static void setup(int jobsn);
 static void usage(void);
 
 /* function implementations */
@@ -675,9 +677,10 @@ prstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth))
    . the file has an active lock (the proccess that has the lock is running)
      which is hold by a redo proccess trying to build the same target, so either
    . . there is a dependency cycle <=> the pid stored in the file equals prog.pid
+       (not checked when running jobs in parallel)
    . . or another independent redo is building the target
-   . no lock is active, so the proccess that created the lockfile was killed
-     and the pid stored in that cannot be trusted
+   . or no lock is active, so the proccess that created the lockfile was killed
+     and the pid stored in that is not useful
  */
 int
 acqexlck(int *fd, const char *lckfnm)
@@ -702,10 +705,10 @@ acqexlck(int *fd, const char *lckfnm)
 			perrnand(ret(LCKERR), "filelck: '%s'", lckfnm);
 		if (doread(lckfd, &pid, sizeof(pid_t)) < 0)
 			perrnand(ret(LCKERR), "read: '%s'", lckfnm);
-		if (pid == prog.toppid)
+		if (!prog.withjm && pid == prog.toppid)
 			ret(DEPCYCL);
 		/* wait until the write lock gets released */
-		if (filelck(lckfd, F_SETLKW, F_WRLCK, 0, 2) < 0)
+		if (filelck(lckfd, F_SETLKW, F_RDLCK, 0, 2) < 0)
 			perrnand(ret(LCKERR), "filelck: '%s'", lckfnm);
 		ret(LCKREL); /* lock has been released */
 	}
@@ -868,7 +871,7 @@ redoifchange(char *trg, FPARS(int, lvl, pdepfd))
 		perrnand(ret(0), "repdep: '%s'", trg);
 	ret(1);
 rebuild:
-	rb = 1;
+	rb = 1, r = 0;
 end:
 	if (tdirfd >= 0 && close(tdirfd) < 0)
 		perrnand(r = 0, "close: '%s'", tdir);
@@ -953,8 +956,9 @@ fredo(RedoFn redofn, char *targ)
 void
 jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 {
+	struct pollfd pfd;
 	pid_t cld; /* child's pid, if any */
-	int s, r, msg, st;
+	int s, ja, msg, st;
 
 #define ex(V) \
 	do { \
@@ -964,17 +968,23 @@ jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 
 	cld = -1;
 	if (!last || *paral) {
-		msg = !*paral ? HASJAVAIL : NEWJREQ;
-		if (dowrite(prog.jmwfd, &msg, sizeof msg) < 0)
-			perrnand(ex(1), "write");
-
-		switch (read(prog.jmrfd, &r, sizeof r)) {
-		case -1:
-			perrn("read");
-		case 0:
-			ex(1);
+		if (!*paral) { /* check whether a is job available */
+			pfd.fd = prog.jmrfd;
+			pfd.events = POLLIN;
+			if ((ja = poll(&pfd, 1, 0)) < 0)
+				perrnand(ex(1), "poll");
+		} else {
+			msg = JOBNEW;
+			if (dowrite(prog.jmwfd, &msg, sizeof msg) < 0)
+				perrnand(ex(1), "write");
+			switch (read(prog.jmrfd, &msg, sizeof msg)) {
+			case -1:
+				perrn("read");
+			case 0:
+				ex(1);
+			}
 		}
-		if (!last && (*paral || r))
+		if (!last && (*paral || ja))
 			switch (cld = fork()) {
 			case -1:
 				perrnand(ex(1), "fork");
@@ -1002,7 +1012,7 @@ jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 end:
 	if (cld >= 0) {
 		if (wait(&st) < 0)
-			perrnand(s = 0, "wait");
+			perrnand(s = 1, "wait");
 		s = s || !WIFEXITED(st) || WEXITSTATUS(st);
 	}
 	exit(s);
@@ -1033,7 +1043,7 @@ spawnjm(int jobsn)
 {
 	pid_t pid;
 	int wp[2], rp[2];
-	int st, r;
+	int st, s;
 
 	if (pipe(wp) < 0 || pipe(rp) < 0)
 		ferrn("pipe");
@@ -1051,32 +1061,31 @@ spawnjm(int jobsn)
 		return;
 	}
 	if (close(wp[1]) < 0 || close(rp[0]) < 0)
-		perrnand(goto wt, "close");
+		perrn("close");
 
-	r = jmrun(jobsn, wp[0], rp[1]);
-wt:
-	if (wait(&st) < 0)
-		perrnand(r = 1, "wait");
-	exit(!r || !WIFEXITED(st) || WEXITSTATUS(st));
+	s = !jmrun(jobsn, wp[0], rp[1]);
+
+	if (pid >= 0 && wait(&st) < 0)
+		perrnand(s = 1, "wait");
+	exit(s || !WIFEXITED(st) || WEXITSTATUS(st));
 }
 
-int
+void
 setup(int jobsn)
 {
-	int withjm;
 	mode_t mask;
 	const char *d;
 	char *e;
 	size_t n;
 
-	withjm = 0;
+	prog.withjm = 0;
 	if ((prog.jmrfd = envgetfd(enm.jmrfd)) < 0) {
 		if (jobsn) {
 			spawnjm(jobsn);
-			withjm = 1;
+			prog.withjm = 1;
 		}
 	} else {
-		withjm = 1;
+		prog.withjm = 1;
 		if ((prog.jmwfd = envgetfd(enm.jmwfd)) < 0)
 			ferrf("invalid environment values for '%s' and '%s'",
 				enm.jmrfd, enm.jmwfd);
@@ -1114,14 +1123,12 @@ setup(int jobsn)
 		ferrf("$TMPDIR: %s", strerror(ENAMETOOLONG));
 
 	prog.fsync = envgeti(enm.fsync, 0, 1, 1);
-
-	return withjm;
 }
 
 void
 usage(void)
 {
-	ferrf("usage: redo [-j njobs] targets...");
+	ferrf("usage: redo [-j n] targets...");
 }
 
 int
@@ -1158,7 +1165,8 @@ main(int argc, char *argv[])
 	else
 		ferrf("'%s': not implemented", prognm);
 
-	if (setup(jobsn - 1))
+	setup(jobsn - 1);
+	if (prog.withjm)
 		vjredo(redofn, argv);
 	else
 		vredo(redofn, argv);
