@@ -30,8 +30,6 @@ jmrun(FPARS(int, jobsn, rfd, wfd))
 		goto end; \
 	} while (0)
 
-	prognm = "redo-jobmgr";
-
 	if (setjmp(jbuf))
 		ret(0);
 

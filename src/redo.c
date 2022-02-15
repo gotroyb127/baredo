@@ -356,7 +356,7 @@ int
 execdof(struct dofile *df, FPARS(int, lvl, depfd))
 {
 	struct stat st, pst;
-	pid_t pid;
+	pid_t cld;
 	int r, ws, fd1, a3fd;
 	int unlarg3, unlfd1f;
 	char *trg;
@@ -389,9 +389,9 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 	} else
 		pst.st_size = 0;
 
-	if ((pid = fork()) < 0)
+	if ((cld = fork()) < 0)
 		perrnand(ret(DOFERR), "fork");
-	if (pid == 0) {
+	else if (!cld) {
 		if (envseti(enm.pdepfd, depfd) < 0 ||
 		envseti(enm.lvl, lvl) < 0)
 			ferrn("envseti");
@@ -408,7 +408,8 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 		ferrn("execl");
 	}
 	unlarg3 = 1;
-	wait(&ws);
+	if (waitpid(cld, &ws, 0) < 0)
+		perrnand(ret(DOFERR), "waitpid");
 	if (!WIFEXITED(ws) || WEXITSTATUS(ws) != 0)
 		ret(DOFERR);
 
@@ -427,14 +428,14 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 
 	/* determine whether $3 or stdout is the target */
 	trg = NULL;
-	if (!access(df->arg3, F_OK)) { /* .do file created $3 */
+
+	if ((a3fd = open(df->arg3, O_RDONLY)) >= 0) /* .do file created $3 */
 		trg = df->arg3, unlarg3 = 0;
-		if ((a3fd = open(df->arg3, O_RDONLY)) < 0)
-			perrnand(ret(DOFERR), "open: '%s'", df->arg3);
-	} else if (errno != ENOENT)
-		perrnand(ret(DOFERR), "stat: '%s'", df->arg3);
-	if (stat(df->fd1f, &st) < 0)
-		perrnand(ret(DOFERR), "stat: '%s'", df->fd1f);
+	else if (errno != ENOENT)
+		perrnand(ret(DOFERR), "open: '%s'", df->arg3);
+
+	if (fstat(fd1, &st) < 0)
+		perrnand(ret(DOFERR), "fstat: '%s'", df->fd1f);
 	else if (st.st_size > 0) { /* .do file wrote to stdout */
 		if (trg) { /* .do file also created $3 */
 			unlarg3 = 1;
@@ -731,7 +732,7 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 {
 	struct dofile df;
 	int depfd, lckfd;
-	int ok, r;
+	int ok, r, ifch;
 	char tmp[PATH_MAX], lckfnm[PATH_MAX], tmpdepfnm[sizeof prog.tmpffmt];
 	char *s;
 
@@ -741,7 +742,7 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 		goto end; \
 	} while (0)
 
-	lckfd = -1;
+	lckfd = -1, ifch = 0;
 	if ((depfd = mkstemp(strcpy(tmpdepfnm, prog.tmpffmt))) < 0)
 		perrnand(ret(0), "mkstemp: '%s'", tmpdepfnm);
 
@@ -770,7 +771,7 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 		ret(0);
 	case LCKREL:
 		lckfd = -1;
-		ret(redoifchange(trg, lvl, pdepfd));
+		goto ifchange;
 	case LCKACQ:
 		break;
 	}
@@ -790,6 +791,8 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 	} else if (errno != ENOENT)
 		perrnand(ret(0), "access: '%s'", trg);
 	ret(1);
+ifchange:
+	ifch = 1, r = 0;
 end:
 	if (depfd >= 0) {
 		if (close(depfd) < 0)
@@ -803,6 +806,8 @@ end:
 		if (unlink(lckfnm) < 0 && errno != ENOENT)
 			perrnand(r = 0, "unlink: '%s'", lckfnm);
 	}
+	if (ifch)
+		r = redoifchange(trg, lvl, pdepfd);
 	return r;
 #undef ret
 }
@@ -957,6 +962,7 @@ void
 jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 {
 	struct pollfd pfd;
+	ssize_t r;
 	pid_t cld; /* child's pid, if any */
 	int s, ja, msg, st;
 
@@ -977,24 +983,21 @@ jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 			msg = JOBNEW;
 			if (dowrite(prog.jmwfd, &msg, sizeof msg) < 0)
 				perrnand(ex(1), "write");
-			switch (read(prog.jmrfd, &msg, sizeof msg)) {
-			case -1:
+			if ((r = read(prog.jmrfd, &msg, sizeof msg)) < 0)
 				perrn("read");
-			case 0:
+			else if (!r) /* job manager closed the pipe */
 				ex(1);
-			}
 		}
-		if (!last && (*paral || ja))
-			switch (cld = fork()) {
-			case -1:
+		if (!last && (*paral || ja)) {
+			if ((cld = fork()) < 0)
 				perrnand(ex(1), "fork");
-			case 0:
+			else if (!cld) {
 				*paral = 1;
 				prog.pid = getpid();
 				return;
 			}
+		}
 	}
-
 	s = fredo(redofn, trg);
 	if (!s || *paral) {
 		msg = s ? JOBDONE : JOBERR;
@@ -1006,13 +1009,13 @@ jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 			ex(!s);
 		if (s)
 			return;
-		ex(1);
+		exit(1);
 	}
 	ex(!s);
 end:
 	if (cld >= 0) {
-		if (wait(&st) < 0)
-			perrnand(s = 1, "wait");
+		if (waitpid(cld, &st, 0) < 0)
+			perrnand(s = 1, "waitpid");
 		s = s || !WIFEXITED(st) || WEXITSTATUS(st);
 	}
 	exit(s);
@@ -1041,16 +1044,15 @@ vjredo(RedoFn redofn, char *trgv[])
 void
 spawnjm(int jobsn)
 {
-	pid_t pid;
+	pid_t cld;
 	int wp[2], rp[2];
 	int st, s;
 
 	if (pipe(wp) < 0 || pipe(rp) < 0)
 		ferrn("pipe");
-	switch (pid = fork()) {
-	case -1:
+	if ((cld = fork()) < 0)
 		ferrn("fork");
-	case 0:
+	else if (!cld) {
 		prog.jmwfd = wp[1];
 		prog.jmrfd = rp[0];
 		if (envseti(enm.jmrfd, prog.jmrfd) < 0 ||
@@ -1060,12 +1062,13 @@ spawnjm(int jobsn)
 			ferrn("close");
 		return;
 	}
+	prognm = "redo-jobmgr";
 	if (close(wp[1]) < 0 || close(rp[0]) < 0)
 		perrn("close");
 
 	s = !jmrun(jobsn, wp[0], rp[1]);
 
-	if (pid >= 0 && wait(&st) < 0)
+	if (waitpid(cld, &st, 0) < 0)
 		perrnand(s = 1, "wait");
 	exit(s || !WIFEXITED(st) || WEXITSTATUS(st));
 }
