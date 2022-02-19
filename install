@@ -2,89 +2,70 @@
 
 set -e
 
-PREFIX=${PREFIX:-/usr/local}
-BINDIR=${BINDIR:-$PREFIX/bin}
-MANPREFIX=${MANPREFIX:-$PREFIX/share/man}
-
-msg() {
-	printf '%s\n' "$0: $*"
-}
-
 icmds() {
-	msg "Installing cmds to $BINDIR"
+	bindir=$1
 
-	cp -f redo "$BINDIR"
+	mkdir -p "$bindir"
+	cp -f redo "$bindir"
 	for lnk in ifchange ifcreate infofor
 	do
-		ln -sf redo "$BINDIR/redo-$lnk"
+		ln -sf redo "$bindir/redo-$lnk"
 	done
 }
 
 ucmds() (
-	msg "Uninstalling cmds from $BINDIR"
+	bindir=$1
 
-	cd "$BINDIR"
-	rm -f redo redo-ifchange redo-ifcreade redo-infofor
+	cd "$bindir"
+	rm -f redo redo-ifchange redo-ifcreate redo-infofor
 )
 
 iman() {
-	mandir=$MANPREFIX/man1
-
-	msg "Installing manuals to $mandir"
+	mandir=$1
 
 	mkdir -p "$mandir"
 	cp redo.1 "$mandir"
 }
 
 uman() {
-	msg "Uninstalling manuals from $mandir"
+	mandir=$1
+
 	rm -f "$mandir"/redo.1
 }
 
 usage() {
 	cat <<-EOF >&2
-		usage: ${0##*/} [-i|-u] [-a|-c|-m]
-		-i|-u: install|uninstall
-		-a|-c|-m: all|commands|manual
-		default: -ia
+		usage: ${0##*/} [-i|-u] [-c cmddir |-m mandir]
+		-i|-u: install|uninstall (default: install)
+		-c|-m dir: cmds|manual to/from dir
 	EOF
 	exit 1
 }
 
-OPTIND=1
 op=i
-what=all
-while getopts iuacm fl
+c=
+m=
+OPTIND=1
+while getopts iuc:m: fl
 do
 	case $fl in
 	(i|u)
 		op=$fl
 	;;
-	(a)
-		what=all
-	;;
-	(c)
-		what=cmds
-	;;
-	(m)
-		what=man
+	(c|m)
+		eval "$fl=$OPTARG"
 	;;
 	(*)
 		usage
 	esac
 done
 
-[ $# -ge $OPTIND ] &&
+[ $# -ge $OPTIND ] || [ -z "$c" ] && [ -z "$m" ] &&
 	usage
 
-case $what in
-(all)
-	${op}cmds
-	${op}man
-;;
-(cmds|man)
-	$op$what
-;;
-(*)
-	usage
-esac
+[ -n "$c" ] &&
+	${op}cmds "$c"
+
+[ -n "$m" ] &&
+	${op}man "$m"
+true
