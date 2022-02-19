@@ -1,0 +1,90 @@
+#!/bin/sh
+
+set -e
+
+PREFIX=${PREFIX:-/usr/local}
+BINDIR=${BINDIR:-$PREFIX/bin}
+MANPREFIX=${MANPREFIX:-$PREFIX/share/man}
+
+msg() {
+	printf '%s\n' "$0: $*"
+}
+
+icmds() {
+	msg "Installing cmds to $BINDIR"
+
+	cp -f redo "$BINDIR"
+	for lnk in ifchange ifcreate infofor
+	do
+		ln -sf redo "$BINDIR/redo-$lnk"
+	done
+}
+
+ucmds() (
+	msg "Uninstalling cmds from $BINDIR"
+
+	cd "$BINDIR"
+	rm -f redo redo-ifchange redo-ifcreade redo-infofor
+)
+
+iman() {
+	mandir=$MANPREFIX/man1
+
+	msg "Installing manuals to $mandir"
+
+	mkdir -p "$mandir"
+	cp redo.1 "$mandir"
+}
+
+uman() {
+	msg "Uninstalling manuals from $mandir"
+	rm -f "$mandir"/redo.1
+}
+
+usage() {
+	cat <<-EOF >&2
+		usage: ${0##*/} [-i|-u] [-a|-c|-m]
+		-i|-u: install|uninstall
+		-a|-c|-m: all|commands|manual
+		default: -ia
+	EOF
+	exit 1
+}
+
+OPTIND=1
+op=i
+what=all
+while getopts iuacm fl
+do
+	case $fl in
+	(i|u)
+		op=$fl
+	;;
+	(a)
+		what=all
+	;;
+	(c)
+		what=cmds
+	;;
+	(m)
+		what=man
+	;;
+	(*)
+		usage
+	esac
+done
+
+[ $# -ge $OPTIND ] &&
+	usage
+
+case $what in
+(all)
+	${op}cmds
+	${op}man
+;;
+(cmds|man)
+	$op$what
+;;
+(*)
+	usage
+esac

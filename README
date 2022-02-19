@@ -1,41 +1,45 @@
-baredo: an implementation of the redo build system.
-(bare-redo)
+baredo: a redo[1] build system implementation.
 
-Requires a POSIX-compatible environment that can compile C99, but no
-external dependencies.
+baredo (bare-redo) differs from other redo implementations in that it is aimed to
+reflect the simplicity, usability, efficiency and completeness of redo's design.
+This is why no other "features" are planned to be implemented and it is
+considered complete in its current state. (though flags for not printing
+status lines, etc. could be considered)
 
-Implemented: redo, redo-ifchange, redo-ifcreate, redo-infofor
+[1]: https://cr.yp.to/redo.html
 
-redo-infofor is used to just print whatever information redo has
-stored after building a target in a more human-readable way, and .do files
-shouldn't rely on its existatnce.
+Requires a POSIX-compatible environment that can compile C99 code,
+but no external dependencies.
 
-Also running .do files in parallel is supported and controled with the
-'j' flag. E.g. with `redo -j4` at most 3 additional .do files may be executed.
+Commands implemented: redo, redo-ifchange, redo-ifcreate, redo-infofor.
 
-Aside from '-j' no other flags are implemented, but the environmet variable
-`REDO_FSYNC` can be set to 0 to skip explicit calls to fsync(2), which are
-required to ensure that some operations occur atomically.
+redo-infofor is just a helper and .do files shouldn't rely on its existatnce.
 
-Also, redo itself relies of a number of environment variables that begin with
-`_REDO_`.
+DOCUMENTATION
 
-Manual pages not yet written, but this (documentation about another redo
-implementation) should be informative: https://redo.readthedocs.io/en/latest
+baredo's behaviour is described in the redo.1 manpage, which you can view
+localy (after having cloned the repo) with
+
+	$ man -l redo.1
 
 BUILDING
 
-If available you can use an already working redo to build with
-	redo all
+First run
+	$ ./gencc # reads CC,... from its enviromnent
 
-Bootstrap with
-	# configure using environment variables
-	# e.g. select C compiler via env CC=mycc ./configure
-	# you can also edit the generated ./cc script
-	./configure
-	./bootstrap
+Then, you can use redo, if available, to build with
 
-Install to /pref/bin with
-	env PREFIX=/pref ./redo install
-or to /path/dir with
-	env BINDIR=/path/dir ./redo install
+	$ redo all
+
+or, bootstrap with
+
+	$ ./bootstrap
+
+Install commands to /pref/bin and man page to /manpref/man1 with
+
+	env PREFIX=/pref MANPREFIX=/manpref ./install
+
+The ./install script can be used to (un)install the commands and the manual
+page seperately, e.g. install only commands to /path/dir with
+
+	env BINDIR=/path/dir ./install -c
