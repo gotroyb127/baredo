@@ -1,13 +1,14 @@
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <poll.h>
-#include <fcntl.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
-#include <string.h>
+#include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "util.h"
@@ -32,7 +33,7 @@
 	} while (0)
 
 /* possible outcomes of executing a .do file */
-enum { DOFERR, TRGSAME, TRGNEW };
+enum { DOFINT, DOFERR, TRGSAME, TRGNEW };
 
 /* possible outcomes of trying to acquire an exexution lock */
 enum { LCKERR, DEPCYCL, LCKREL, LCKACQ };
@@ -59,6 +60,7 @@ struct {
 	mode_t dmode, fmode;
 	int lvl;
 	int pdepfd; /* fd in which parents expects dependency reporting */
+	int retonsig; /* whether the signal handler should return instead of exiting */
 	int fsync;
 	char topwd[PATH_MAX];
 	char wd[PATH_MAX];
@@ -121,6 +123,7 @@ static void jredo(RedoFn, char *trg, FPARS(int, *paral, last));
 static void vredo(RedoFn redofn, char *trgv[]);
 static void vjredo(RedoFn redofn, char *trgv[]);
 static void spawnjm(int jobsn);
+static void onsig(int sig);
 static void setup(int jobsn);
 static void usage(void);
 
@@ -407,9 +410,17 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 			df->arg3, (char *)0);
 		ferrn("execl");
 	}
+
+	prog.retonsig = 1;
+	if (waitpid(cld, &ws, 0) < 0) {
+		if (errno != EINTR)
+			perrnand(ret(DOFERR), "waitpid");
+		unlfd1f = !fstat(fd1, &st) && !st.st_size;
+		ret(DOFINT);
+	}
+	prog.retonsig = 0;
+
 	unlarg3 = 1;
-	if (waitpid(cld, &ws, 0) < 0)
-		perrnand(ret(DOFERR), "waitpid");
 	if (!WIFEXITED(ws) || WEXITSTATUS(ws) != 0)
 		ret(DOFERR);
 
@@ -777,7 +788,8 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 	}
 
 	/* exec */
-	ok = execdof(&df, lvl+1, depfd);
+	if ((ok = execdof(&df, lvl+1, depfd)) == DOFINT)
+		ret(0);
 	prstatln(ok >= TRGSAME, lvl, trg, df.pth);
 
 	if (ok < TRGSAME)
@@ -1074,12 +1086,25 @@ spawnjm(int jobsn)
 }
 
 void
+onsig(int sig)
+{
+	if (prog.retonsig)
+		return;
+	_exit(1);
+}
+
+void
 setup(int jobsn)
 {
+	struct sigaction sa;
 	mode_t mask;
 	const char *d;
 	char *e;
 	size_t n;
+
+	sa = (struct sigaction){.sa_handler = &onsig};
+	if (sigaction(SIGINT, &sa, NULL) < 0)
+		ferrn("sigaction");
 
 	prog.withjm = 0;
 	if ((prog.jmrfd = envgetfd(enm.jmrfd)) < 0) {

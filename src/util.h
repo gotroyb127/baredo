@@ -66,8 +66,6 @@
 #define FPARS_8(type, _1, _2, _3, _4, _5, _6, _7, _8) \
 	FPARS_7(type, _1, _2, _3, _4, _5, _6, _7), type _8
 
-typedef unsigned uint;
-
 ssize_t dowrite(int fd, const void *buf, size_t n);
 ssize_t doread(int fd, void *buf, size_t n);
 size_t strlcpy(char *dst, const char *src, size_t n);

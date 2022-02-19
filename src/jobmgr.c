@@ -21,7 +21,7 @@ put(int wfd, int r)
 int
 jmrun(FPARS(int, jobsn, rfd, wfd))
 {
-	uint maxrjs, rjobs, pjobs;
+	unsigned int maxrjs, rjobs, pjobs;
 	int r, msg;
 
 #define ret(V) \
