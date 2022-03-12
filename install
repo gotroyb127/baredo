@@ -35,9 +35,11 @@ uman() {
 
 usage() {
 	cat <<-EOF >&2
-		usage: ${0##*/} [-i|-u] [-c cmddir |-m mandir]
-		-i|-u: install|uninstall (default: install)
-		-c|-m dir: cmds|manual to/from dir
+		usage: ${0##*/} [-i | -u] [-c cmddir | -m mandir]
+		-i | -u:
+			install/uninstall (default: install)
+		(-c | -m) dir:
+			cmds/manual to/from dir
 	EOF
 	exit 1
 }

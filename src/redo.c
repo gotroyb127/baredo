@@ -18,18 +18,18 @@
 /* max number of chars added to valid paths as suffix */
 #define PTHMAXSUF  (sizeof redir + NAME_MAX)
 #define TSEQ(A, B) ((A).tv_sec == (B).tv_sec && (A).tv_nsec == (B).tv_nsec)
-#define DIRFROMPATH(D, PATH, CODE) \
-	do { \
-		char *s_, *D; \
-		if (!(s_ = strrchr((PATH), '/'))) \
-			D = "."; \
-		else if (s_ > (PATH)) \
-			D = (PATH), *s_ = '\0'; \
-		else \
-			D = "/", s_ = NULL; \
-		CODE \
-		if (s_) \
-			*s_ = '/'; \
+#define DIRFROMPATH(D, PATH, CODE)\
+	do {\
+		char *s_, *D;\
+		if (!(s_ = strrchr((PATH), '/')))\
+			D = ".";\
+		else if (s_ > (PATH))\
+			D = (PATH), *s_ = '\0';\
+		else\
+			D = "/", s_ = NULL;\
+		CODE\
+		if (s_)\
+			*s_ = '/';\
 	} while (0)
 
 /* possible outcomes of executing a .do file */
@@ -38,7 +38,7 @@ enum { DOFINT, DOFERR, TRGSAME, TRGNEW };
 /* possible outcomes of trying to acquire an exexution lock */
 enum { LCKERR, DEPCYCL, LCKREL, LCKACQ };
 
-typedef int (*RedoFn)(char *, int, int);
+typedef int redofnt(char *, int, int);
 
 struct dofile {
 	char pth[PATH_MAX];
@@ -90,44 +90,42 @@ const char shell[]      = "/bin/sh";
 const char shellflags[] = "-e";
 const char redir[]      = ".redo"; /* directory redo expects to use exclusively */
 
-/* function declerations */
-static intmax_t strtoint(const char *str, FPARS(intmax_t, min, max, def));
-static intmax_t envgeti(const char *nm, FPARS(intmax_t, min, max, def));
-static int envgetfd(const char *nm);
-static int envsets(FPARS(const char, *nm, *val));
-static int envseti(const char *nm, intmax_t n);
-static char *normpath(char *abs, size_t n, FPARS(const char, *path, *relto));
-static char *relpath(char *rlp, size_t n, FPARS(const char, *path, *relto));
-static int mkpath(char *path, mode_t mode);
-static int filelck(FPARS(int, fd, cmd, type), FPARS(off_t, start, len));
-static int dirsync(const char *dpth);
-static int dofisok(const char *pth, int depfd);
-static int finddof(const char *trg, struct dofile *df, int depfd);
-static int execdof(struct dofile *fd, FPARS(int, lvl, depfd));
-static char *redirentry(char *fnm, FPARS(const char, *trg, *suf));
-static char *getlckfnm(char *fnm, const char *trg);
-static char *getbifnm(char *fnm, const char *trg);
-static int repdep(int depfd, char t, const char *trg);
-static int fputdep(FILE *f, int t, FPARS(const char, *fnm, *trg));
-static int recdeps(FPARS(const char, *bifnm, *rdfnm, *trg));
-static int fgetdep(FILE *f, struct dep *dep);
-static int depchanged(struct dep *dep, int tdirfd);
-static void prstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth));
-static int acqexlck(int *fd, const char *lckfnm);
-static int redo(char *trg, FPARS(int, lvl, pdepfd));
-static int redoifchange(char *trg, FPARS(int, lvl, pdepfd));
-static int redoifcreate(char *trg, FPARS(int, lvl, pdepfd));
-static int redoinfofor(char *trg, FPARS(int, lvl, pdepfd));
-static int fredo(RedoFn redofn, char *targ);
-static void jredo(RedoFn, char *trg, FPARS(int, *paral, last));
-static void vredo(RedoFn redofn, char *trgv[]);
-static void vjredo(RedoFn redofn, char *trgv[]);
-static void spawnjm(int jobsn);
-static void onsig(int sig);
-static void setup(int jobsn);
-static void usage(void);
+intern intmax_t strtoint(const char *str, FPARS(intmax_t, min, max, def));
+intern intmax_t envgeti(const char *nm, FPARS(intmax_t, min, max, def));
+intern int envgetfd(const char *nm);
+intern int envsets(FPARS(const char, *nm, *val));
+intern int envseti(const char *nm, intmax_t n);
+intern char *normpath(char *abs, size_t n, FPARS(const char, *path, *relto));
+intern char *relpath(char *rlp, size_t n, FPARS(const char, *path, *relto));
+intern int mkpath(char *path, mode_t mode);
+intern int filelck(FPARS(int, fd, cmd, type), FPARS(off_t, start, len));
+intern int dirsync(const char *dpth);
+intern int dofisok(const char *pth, int depfd);
+intern int finddof(const char *trg, struct dofile *df, int depfd);
+intern int execdof(struct dofile *fd, FPARS(int, lvl, depfd));
+intern char *redirentry(char *fnm, FPARS(const char, *trg, *suf));
+intern char *getlckfnm(char *fnm, const char *trg);
+intern char *getbifnm(char *fnm, const char *trg);
+intern int repdep(int depfd, char t, const char *trg);
+intern int fputdep(FILE *f, int t, FPARS(const char, *fnm, *trg));
+intern int recdeps(FPARS(const char, *bifnm, *rdfnm, *trg));
+intern int fgetdep(FILE *f, struct dep *dep);
+intern int depchanged(struct dep *dep, int tdirfd);
+intern void pstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth));
+intern int acqexlck(int *fd, const char *lckfnm);
+intern int redo(char *trg, FPARS(int, lvl, pdepfd));
+intern int redoifchange(char *trg, FPARS(int, lvl, pdepfd));
+intern int redoifcreate(char *trg, FPARS(int, lvl, pdepfd));
+intern int redoinfofor(char *trg, FPARS(int, lvl, pdepfd));
+intern int fredo(redofnt *, char *targ);
+intern void jredo(redofnt *, char *trg, FPARS(int, *paral, last));
+intern void vredo(redofnt *, int trgc, char *trgv[]);
+intern void vjredo(redofnt *, int trgc, char *trgv[]);
+intern void spawnjm(int jobsn);
+intern void onsig(int sig);
+intern void setup(int jobsn);
+intern void usage(void);
 
-/* function implementations */
 intmax_t
 strtoint(const char *str, FPARS(intmax_t, min, max, def))
 {
@@ -325,13 +323,13 @@ finddof(const char *trg, struct dofile *df, int depfd)
 	size_t i;
 	char *e, *sf, *s; /* end, suffix, suffix */
 
-#define ckdof(DF, A1, SUFLEN) \
-	do { \
-		if (dofisok((DF)->pth, depfd)) { \
-			strcpy((DF)->arg1, (A1)); \
-			stpcpy((DF)->arg2, (DF)->arg1)[-SUFLEN] = '\0'; \
-			return 1; \
-		} \
+#define ckdof(DF, A1, SUFLEN)\
+	do {\
+		if (dofisok((DF)->pth, depfd)) {\
+			strcpy((DF)->arg1, (A1));\
+			stpcpy((DF)->arg2, (DF)->arg1)[-SUFLEN] = '\0';\
+			return 1;\
+		}\
 	} while (0)
 
 	strcpy((e = stpcpy(df->pth, trg)), ".do");
@@ -360,40 +358,34 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 {
 	struct stat st, pst;
 	pid_t cld;
-	int r, ws, fd1, a3fd;
+	int ws, fd1, a3fd, rv;
 	int unlarg3, unlfd1f;
 	char *trg;
-
-#define ret(V) \
-	do { \
-		r = (V); \
-		goto end; \
-	} while (0)
 
 	fd1 = a3fd = -1, unlarg3 = unlfd1f = 0;
 
 	sprintf(df->fd1f, "%s.redo.XXXXXX", df->arg1);
 	if ((fd1 = mkstemp(df->fd1f)) < 0)
-		perrnand(ret(DOFERR), "mkstemp: '%s'", df->fd1f);
+		perrnand(RET(DOFERR), "mkstemp: %s", df->fd1f);
 	unlfd1f = 1;
 	if (fchmod(fd1, prog.fmode) < 0) /* respect umask */
-		perrnand(ret(DOFERR), "fchmod: '%s'", df->fd1f);
+		perrnand(RET(DOFERR), "fchmod: %s", df->fd1f);
 
 	sprintf(df->arg3, "%s.%d", df->fd1f, prog.pid);
 	if (!access(df->arg3, F_OK))
-		perrfand(ret(DOFERR), "assertion failed: '%s' exists",
+		perrfand(RET(DOFERR), "assertion failed: %s exists",
 			df->arg3);
 
 	/* get $1's status to later assert that it has not changed */
 	if (stat(df->arg1, &pst) < 0) {
 		if (errno != ENOENT)
-			perrnand(ret(DOFERR), "stat: '%s'", df->arg1);
+			perrnand(RET(DOFERR), "stat: %s", df->arg1);
 		pst.st_size = -1;
 	} else
 		pst.st_size = 0;
 
 	if ((cld = fork()) < 0)
-		perrnand(ret(DOFERR), "fork");
+		perrnand(RET(DOFERR), "fork");
 	else if (!cld) {
 		if (envseti(enm.pdepfd, depfd) < 0 ||
 		envseti(enm.lvl, lvl) < 0)
@@ -414,27 +406,27 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 	prog.retonsig = 1;
 	if (waitpid(cld, &ws, 0) < 0) {
 		if (errno != EINTR)
-			perrnand(ret(DOFERR), "waitpid");
+			perrnand(RET(DOFERR), "waitpid");
 		unlfd1f = !fstat(fd1, &st) && !st.st_size;
-		ret(DOFINT);
+		RET(DOFINT);
 	}
 	prog.retonsig = 0;
 
 	unlarg3 = 1;
 	if (!WIFEXITED(ws) || WEXITSTATUS(ws) != 0)
-		ret(DOFERR);
+		RET(DOFERR);
 
 	/* assert that $1 hasn't changed */
 	if (stat(df->arg1, &st) < 0) {
 		if (errno != ENOENT)
-			perrnand(ret(DOFERR), "stat: '%s'", df->arg1);
+			perrnand(RET(DOFERR), "stat: %s", df->arg1);
 		if (pst.st_size >= 0)
-			perrfand(ret(DOFERR), "aborting: .do file has removed $1");
+			perrfand(RET(DOFERR), "aborting: .do file has removed $1");
 	} else {
 		if (pst.st_size < 0)
-			perrfand(ret(DOFERR), "aborting: .do file has created $1");
+			perrfand(RET(DOFERR), "aborting: .do file has created $1");
 		if (!TSEQ(pst.st_ctim, st.st_ctim))
-			perrfand(ret(DOFERR), "aborting: .do file modified $1");
+			perrfand(RET(DOFERR), "aborting: .do file modified $1");
 	}
 
 	/* determine whether $3 or stdout is the target */
@@ -443,48 +435,47 @@ execdof(struct dofile *df, FPARS(int, lvl, depfd))
 	if ((a3fd = open(df->arg3, O_RDONLY)) >= 0) /* .do file created $3 */
 		trg = df->arg3, unlarg3 = 0;
 	else if (errno != ENOENT)
-		perrnand(ret(DOFERR), "open: '%s'", df->arg3);
+		perrnand(RET(DOFERR), "open: %s", df->arg3);
 
 	if (fstat(fd1, &st) < 0)
-		perrnand(ret(DOFERR), "fstat: '%s'", df->fd1f);
+		perrnand(RET(DOFERR), "fstat: %s", df->fd1f);
 	else if (st.st_size > 0) { /* .do file wrote to stdout */
 		if (trg) { /* .do file also created $3 */
 			unlarg3 = 1;
 			perrf("aborting: .do file created $3 AND wrote to stdout");
-			ret(DOFERR);
+			RET(DOFERR);
 		}
 		trg = df->fd1f, unlfd1f = 0;
 	}
 	if (!trg)
-		ret(TRGSAME);
+		RET(TRGSAME);
 
 	/* fsync the target, rename, fsync target's directory */
 	if (prog.fsync) {
 		if (trg == df->arg3) {
 			if (fsync(a3fd) < 0)
-				perrnand(ret(DOFERR), "fsync: '%s'", df->arg3);
+				perrnand(RET(DOFERR), "fsync: %s", df->arg3);
 		} else if (fsync(fd1) < 0)
-			perrnand(ret(DOFERR), "fsync: '%s'", df->fd1f);
+			perrnand(RET(DOFERR), "fsync: %s", df->fd1f);
 	}
 	if (rename(trg, df->arg1) < 0)
-		perrnand(ret(DOFERR), "rename: '%s' -> '%s'", trg, df->arg1);
+		perrnand(RET(DOFERR), "rename: %s -> %s", trg, df->arg1);
 	if (prog.fsync)
 		DIRFROMPATH(dir, df->arg1,
 			if (dirsync(dir) < 0)
-				perrnand(ret(DOFERR), "dirsync: '%s'", dir);
+				perrnand(RET(DOFERR), "dirsync: %s", dir);
 		);
-	ret(TRGNEW);
-end:
+	RET(TRGNEW);
+befret:
 	if (fd1 >= 0 && close(fd1) < 0)
-		perrnand(r = DOFERR, "close: '%s'", df->fd1f);
+		perrnand(rv = DOFERR, "close: %s", df->fd1f);
 	if (a3fd >= 0 && close(a3fd) < 0)
-		perrnand(r = DOFERR, "close: '%s'", df->arg3);
+		perrnand(rv = DOFERR, "close: %s", df->arg3);
 	if (unlarg3 && unlink(df->arg3) < 0 && errno != ENOENT)
-		perrnand(r = DOFERR, "unlink: '%s'", df->arg3);
+		perrnand(rv = DOFERR, "unlink: %s", df->arg3);
 	if (unlfd1f && unlink(df->fd1f) < 0 && errno != ENOENT)
-		perrnand(r = DOFERR, "unlink: '%s'", df->fd1f);
-	return r;
-#undef ret
+		perrnand(rv = DOFERR, "unlink: %s", df->fd1f);
+	return rv;
 }
 
 char *
@@ -534,7 +525,7 @@ fputdep(FILE *f, int t, FPARS(const char, *fnm, *trg))
 	fputc(t, f);
 	if (t != '-') {
 		if (stat(fnm, &st) < 0)
-			perrnand(return 0, "stat: '%s'", fnm);
+			perrnand(return 0, "stat: %s", fnm);
 		fwrite(&st.st_ino, sizeof st.st_ino, 1, f);
 		fwrite(&st.st_mtim, sizeof st.st_mtim, 1, f);
 	} else {
@@ -542,7 +533,7 @@ fputdep(FILE *f, int t, FPARS(const char, *fnm, *trg))
 			if (errno != ENOENT)
 				perrnand(return 0, "access");
 		} else
-			perrfand(return 0, "'%s': ifcreate dependency error: %s",
+			perrfand(return 0, "%s: ifcreate dependency error: %s",
 				fnm, strerror(EEXIST));
 	}
 
@@ -560,59 +551,52 @@ recdeps(FPARS(const char, *bifnm, *rdfnm, *trg))
 {
 	FILE *rf, *wf;
 	size_t i;
-	int c, r;
+	int c, rv;
 	char depln[PATH_MAX+1]; /* type, PATH */
 	char wrfnm[PATH_MAX];
-
-#define ret(V) \
-	do { \
-		r = (V); \
-		goto end; \
-	} while (0)
 
 	rf = wf = NULL;
 	sprintf(wrfnm, "%s.t", bifnm); /* write to a temporary file at first */
 	if (!(rf = fopen(rdfnm, "r")))
-		perrnand(ret(0), "fopen: '%s'", rdfnm);
+		perrnand(RET(0), "fopen: %s", rdfnm);
 	if (!(wf = fopen(wrfnm, "w")))
-		perrnand(ret(0), "fopen: '%s'", wrfnm);
+		perrnand(RET(0), "fopen: %s", wrfnm);
 
 	if (filelck(fileno(wf), F_SETLKW, F_WRLCK, 0, 0) < 0)
-		perrnand(ret(0), "filelck: '%s'", wrfnm);
+		perrnand(RET(0), "filelck: %s", wrfnm);
 	if (!fputdep(wf, ':', trg, trg))
-		ret(0);
+		RET(0);
 	i = 0;
 	while ((c = fgetc(rf)) != EOF) {
 		if (!(depln[i++] = c)) {
 			if (!fputdep(wf, depln[0], depln+1, trg))
-				ret(0);
+				RET(0);
 			i = 0;
 			continue;
 		}
 		if (i >= sizeof depln)
-			ret(0);
+			RET(0);
 	}
 	if (!feof(rf))
-		ret(0);
+		RET(0);
 
 	/* fsync bifile, rename, fsync directory */
 	if (prog.fsync && fsync(fileno(wf)) < 0)
-		perrnand(ret(0), "fsync: '%s'", wrfnm);
+		perrnand(RET(0), "fsync: %s", wrfnm);
 	if (rename(wrfnm, bifnm) < 0)
-		perrnand(ret(0), "rename: '%s' -> '%s'", wrfnm, bifnm);
+		perrnand(RET(0), "rename: %s -> %s", wrfnm, bifnm);
 	if (prog.fsync)
 		DIRFROMPATH(dir, wrfnm,
 			if (dirsync(dir) < 0)
-				perrnand(ret(0), "dirsync: '%s'", dir);
+				perrnand(RET(0), "dirsync: %s", dir);
 		);
-	ret(1);
-end:
-	if (rf && fclose(rf) == EOF)
-		perrnand(r = 0, "fclose: '%s'", rdfnm);
-	if (wf && fclose(wf) == EOF)
-		perrnand(r = 0, "fclose: '%s'", wrfnm);
-	return r;
-#undef ret
+	RET(1);
+befret:
+	if (rf && fclose(rf))
+		perrnand(rv = 0, "fclose: %s", rdfnm);
+	if (wf && fclose(wf))
+		perrnand(rv = 0, "fclose: %s", wrfnm);
+	return rv;
 }
 
 /* return 0 when file is invalid */
@@ -665,20 +649,19 @@ depchanged(struct dep *dep, int tdirfd)
 }
 
 void
-prstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth))
+pstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth))
 {
-	char rlp[PATH_MAX];
 	int i;
+	char rlp[PATH_MAX];
 
 	if (filelck(STDERR_FILENO, F_SETLKW, F_WRLCK, 0, 0) < 0)
 		perrnand(return, "filelck: /dev/stderr");
 
 	eprintf("redo %s ", ok ? "ok" : "err");
 	for (i = 0; i < lvl; i++)
-		eprintf(". ");
-	eprintf("%s", relpath(rlp, sizeof rlp, trg, prog.topwd) ? rlp : trg);
-	eprintf(" (%s)\n", relpath(rlp, sizeof rlp, dfpth, prog.topwd) ?
-		rlp : dfpth);
+		eprintf(".");
+	eprintf(&" %s"[lvl == 0], relpath(rlp, sizeof rlp, trg, prog.topwd) ? rlp : trg);
+	eprintf(" (%s)\n", relpath(rlp, sizeof rlp, dfpth, prog.topwd) ? rlp : dfpth);
 
 	if (filelck(STDERR_FILENO, F_SETLK, F_UNLCK, 0, 0) < 0)
 		perrnand(return, "filelck: /dev/stderr");
@@ -692,50 +675,42 @@ prstatln(FPARS(int, ok, lvl), FPARS(const char, *trg, *dfpth))
        (not checked when running jobs in parallel)
    . . or another independent redo is building the target
    . or no lock is active, so the proccess that created the lockfile was killed
-     and the pid stored in that is not useful
- */
+     and the pid stored in that is not useful */
 int
 acqexlck(int *fd, const char *lckfnm)
 {
 	pid_t pid;
-	int lckfd, r;
-
-#define ret(V) \
-	do { \
-		r = (V); \
-		goto end; \
-	} while (0)
+	int lckfd, rv;
 
 	if ((lckfd = open(lckfnm, O_RDWR|O_CREAT|O_CLOEXEC, prog.fmode)) < 0)
-		perrnand(ret(LCKERR), "open: '%s", lckfnm);
+		perrnand(RET(LCKERR), "open: '%s", lckfnm);
 	if (filelck(lckfd, F_SETLK, F_WRLCK, 0, 2) < 0) {
 		if (errno != EAGAIN && errno != EACCES)
-			perrnand(ret(LCKERR), "filelck: '%s'", lckfnm);
+			perrnand(RET(LCKERR), "filelck: %s", lckfnm);
 		/* lock is held by another proccess, wait until it is safe
 		   to read the pid */
 		if (filelck(lckfd, F_SETLKW, F_RDLCK, 1, 1) < 0)
-			perrnand(ret(LCKERR), "filelck: '%s'", lckfnm);
+			perrnand(RET(LCKERR), "filelck: %s", lckfnm);
 		if (doread(lckfd, &pid, sizeof(pid_t)) < 0)
-			perrnand(ret(LCKERR), "read: '%s'", lckfnm);
+			perrnand(RET(LCKERR), "read: %s", lckfnm);
 		if (!prog.withjm && pid == prog.toppid)
-			ret(DEPCYCL);
+			RET(DEPCYCL);
 		/* wait until the write lock gets released */
 		if (filelck(lckfd, F_SETLKW, F_RDLCK, 0, 2) < 0)
-			perrnand(ret(LCKERR), "filelck: '%s'", lckfnm);
-		ret(LCKREL); /* lock has been released */
+			perrnand(RET(LCKERR), "filelck: %s", lckfnm);
+		RET(LCKREL); /* lock has been released */
 	}
 	if (dowrite(lckfd, &prog.toppid, sizeof(pid_t)) < 0)
-		perrnand(ret(LCKERR), "write: '%s'", lckfnm);
+		perrnand(RET(LCKERR), "write: %s", lckfnm);
 	/* notify that it is safe to read the pid */
 	if (filelck(lckfd, F_SETLK, F_UNLCK, 1, 1) < 0)
-		perrnand(ret(LCKERR), "filelck: '%s'", lckfnm);
+		perrnand(RET(LCKERR), "filelck: %s", lckfnm);
 	*fd = lckfd;
 	return LCKACQ;
-end:
+befret:
 	if (lckfd >= 0 && close(lckfd) < 0)
-		perrnand(r = LCKERR, "close");
-	return r;
-#undef ret
+		perrnand(rv = LCKERR, "close");
+	return rv;
 }
 
 int
@@ -743,43 +718,37 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 {
 	struct dofile df;
 	int depfd, lckfd;
-	int ok, r, ifch;
+	int ok, ifch, rv;
 	char tmp[PATH_MAX], lckfnm[PATH_MAX], tmpdepfnm[sizeof prog.tmpffmt];
 	char *s;
 
-#define ret(V) \
-	do { \
-		r = (V); \
-		goto end; \
-	} while (0)
-
 	lckfd = -1, ifch = 0;
 	if ((depfd = mkstemp(strcpy(tmpdepfnm, prog.tmpffmt))) < 0)
-		perrnand(ret(0), "mkstemp: '%s'", tmpdepfnm);
+		perrnand(RET(0), "mkstemp: %s", tmpdepfnm);
 
 	if (!finddof(trg, &df, depfd))
-		perrfand(ret(0), "no .do file for '%s'", trg);
+		perrfand(RET(0), "no .do file for %s", trg);
 
 	/* chdir to the directory the .do file is in */
 	DIRFROMPATH(dir, df.pth,
 		if (chdir(dir) < 0)
-			perrnand(ret(0), "chdir: '%s'", dir);
+			perrnand(RET(0), "chdir: %s", dir);
 	);
 
 	/* create required path */
 	s = (s = strrchr(df.arg1, '/')) ? s+1 : df.arg1;
 	sprintf(tmp, "%.*s%s", (int)(s - df.arg1), df.arg1, redir);
 	if (mkpath(tmp, prog.dmode) < 0)
-		perrnand(ret(0), "mkpath: '%s'", tmp);
+		perrnand(RET(0), "mkpath: %s", tmp);
 
 	switch (acqexlck(&lckfd, getlckfnm(lckfnm, trg))) {
 	case DEPCYCL:
-		perrf("'%s': dependency cycle detected", relpath(tmp,
+		perrf("%s: dependency cycle detected", relpath(tmp,
 			sizeof tmp, trg, prog.topwd) ? tmp : trg);
 	default:
 	case LCKERR:
 		lckfd = -1;
-		ret(0);
+		RET(0);
 	case LCKREL:
 		lckfd = -1;
 		goto ifchange;
@@ -789,39 +758,38 @@ redo(char *trg, FPARS(int, lvl, pdepfd))
 
 	/* exec */
 	if ((ok = execdof(&df, lvl+1, depfd)) == DOFINT)
-		ret(0);
-	prstatln(ok >= TRGSAME, lvl, trg, df.pth);
+		RET(0);
+	pstatln(ok >= TRGSAME, lvl, trg, df.pth);
 
 	if (ok < TRGSAME)
-		ret(0);
+		RET(0);
 
 	if (!access(trg, F_OK)) {
 		if (pdepfd >= 0 && !repdep(pdepfd, '=', trg))
-			ret(0);
+			RET(0);
 		if (!recdeps(getbifnm(tmp, trg), tmpdepfnm, trg))
-			ret(0);
+			RET(0);
 	} else if (errno != ENOENT)
-		perrnand(ret(0), "access: '%s'", trg);
-	ret(1);
+		perrnand(RET(0), "access: %s", trg);
+	RET(1);
 ifchange:
-	ifch = 1, r = 0;
-end:
+	ifch = 1, rv = 0;
+befret:
 	if (depfd >= 0) {
 		if (close(depfd) < 0)
-			perrnand(r = 0, "close");
+			perrnand(rv = 0, "close");
 		if (unlink(tmpdepfnm) < 0 && errno != ENOENT)
-			perrnand(r = 0, "unlink: '%s'", tmpdepfnm);
+			perrnand(rv = 0, "unlink: %s", tmpdepfnm);
 	}
 	if (lckfd >= 0) {
 		if (close(lckfd) < 0)
-			perrnand(r = 0, "close");
+			perrnand(rv = 0, "close");
 		if (unlink(lckfnm) < 0 && errno != ENOENT)
-			perrnand(r = 0, "unlink: '%s'", lckfnm);
+			perrnand(rv = 0, "unlink: %s", lckfnm);
 	}
 	if (ifch)
-		r = redoifchange(trg, lvl, pdepfd);
-	return r;
-#undef ret
+		rv = redoifchange(trg, lvl, pdepfd);
+	return rv;
 }
 
 int
@@ -830,14 +798,8 @@ redoifchange(char *trg, FPARS(int, lvl, pdepfd))
 	FILE *bif; /* build info file */
 	struct dep dep;
 	int tdirfd;
-	int r, rb, c;
+	int rb, c, rv;
 	char tdir[PATH_MAX], bifnm[PATH_MAX], depfnm[PATH_MAX];
-
-#define ret(V) \
-	do { \
-		r = (V); \
-		goto end; \
-	} while (0)
 
 	rb = 0, tdirfd = -1, bif = NULL;
 	/* target doesn't exist */
@@ -848,25 +810,25 @@ redoifchange(char *trg, FPARS(int, lvl, pdepfd))
 		strcpy(tdir, dir);
 	);
 	if ((tdirfd = open(tdir, O_RDONLY|O_DIRECTORY|O_CLOEXEC)) < 0)
-		perrnand(ret(0), "open: '%s'", tdir);
+		perrnand(RET(0), "open: %s", tdir);
 
 	/* when trg exists but build info in .redo/ doesn't,
 	   assume trg in not supposed to been build by redo */
 	if (access(getbifnm(bifnm, trg), F_OK)) {
 		if (pdepfd >= 0 && !repdep(pdepfd, '=', trg))
-			ret(0);
-		ret(1);
+			RET(0);
+		RET(1);
 	}
 
 	if (!(bif = fopen(bifnm, "r")))
-		perrnand(ret(0), "fopen: '%s'", bifnm);
+		perrnand(RET(0), "fopen: %s", bifnm);
 	if (filelck(fileno(bif), F_SETLKW, F_RDLCK, 0, 0) < 0)
-		perrnand(ret(0), "filelck: '%s'", bifnm);
+		perrnand(RET(0), "filelck: %s", bifnm);
 
 	if (!fgetdep(bif, &dep) || dep.type != ':')
 		goto rebuild;
 	if (depchanged(&dep, tdirfd))
-		perrfand(ret(0), "aborting: '%s' was externally modified",
+		perrfand(RET(0), "aborting: %s was externally modified",
 			dep.fnm);
 	while ((c = fgetc(bif)) != EOF) {
 		ungetc(c, bif);
@@ -876,28 +838,27 @@ redoifchange(char *trg, FPARS(int, lvl, pdepfd))
 			if (!normpath(depfnm, sizeof depfnm - PTHMAXSUF,
 			dep.fnm, tdir)) {
 				errno = ENAMETOOLONG;
-				perrfand(ret(0), "'%s'", dep.fnm);
+				perrfand(RET(0), "%s", dep.fnm);
 			}
 			if (!redoifchange(depfnm, lvl+1, -1))
-				ret(0);
+				RET(0);
 		}
 		if (depchanged(&dep, tdirfd))
 			goto rebuild;
 	}
 	if (pdepfd >= 0 && !repdep(pdepfd, '=', trg))
-		perrnand(ret(0), "repdep: '%s'", trg);
-	ret(1);
+		perrnand(RET(0), "repdep: %s", trg);
+	RET(1);
 rebuild:
-	rb = 1, r = 0;
-end:
+	rb = 1, rv = 0;
+befret:
 	if (tdirfd >= 0 && close(tdirfd) < 0)
-		perrnand(r = 0, "close: '%s'", tdir);
-	if (bif && fclose(bif) == EOF)
-		perrnand(r = 0, "fclose: '%s'", bifnm);
+		perrnand(rv = 0, "close: %s", tdir);
+	if (bif && fclose(bif))
+		perrnand(rv = 0, "fclose: %s", bifnm);
 	if (rb)
-		r = redo(trg, lvl, pdepfd);
-	return r;
-#undef ret
+		rv = redo(trg, lvl, pdepfd);
+	return rv;
 }
 
 int
@@ -913,27 +874,21 @@ redoinfofor(char *trg, FPARS(int, lvl, pdepfd))
 {
 	FILE *bif;
 	struct dep dep;
-	int c, r;
+	int c, rv;
 	char bifnm[PATH_MAX];
-
-#define ret(V) \
-	do { \
-		r = (V); \
-		goto end; \
-	} while (0)
 
 	bif = NULL;
 	if (!(bif = fopen(getbifnm(bifnm, trg), "r"))) {
 		if (errno != ENOENT)
-			perrnand(ret(0), "fopen: '%s'", bifnm);
+			perrnand(RET(0), "fopen: %s", bifnm);
 		char rlp[PATH_MAX];
-		printf("'%s': not build by redo\n",
+		printf("%s: not build by redo\n",
 			relpath(rlp, sizeof rlp, trg, prog.wd) ? rlp : trg);
-		ret(0);
+		RET(0);
 	}
 
 	if (filelck(fileno(bif), F_SETLKW, F_RDLCK, 0, 0) < 0)
-		perrnand(ret(0), "filelck: '%s'", bifnm);
+		perrnand(RET(0), "filelck: %s", bifnm);
 	do {
 		if (!fgetdep(bif, &dep))
 			goto invlf;
@@ -948,41 +903,34 @@ redoinfofor(char *trg, FPARS(int, lvl, pdepfd))
 		ungetc(c, bif);
 	} while (1);
 	if (ferror(bif))
-		perrnand(ret(0), "ferror: '%s'", bifnm);
-	ret(1);
+		perrnand(RET(0), "ferror: %s", bifnm);
+	RET(1);
 invlf:
-	perrfand(ret(0), "'%s': invalid build-info file", bifnm);
-end:
-	if (bif && fclose(bif) == EOF)
-		perrnand(r = 0, "fclose: '%s'", bifnm);
-	return r;
-#undef ret
+	perrfand(RET(0), "%s: invalid build-info file", bifnm);
+befret:
+	if (bif && fclose(bif))
+		perrnand(rv = 0, "fclose: %s", bifnm);
+	return rv;
 }
 
 int
-fredo(RedoFn redofn, char *targ)
+fredo(redofnt *redofn, char *targ)
 {
 	char trg[PATH_MAX];
 
 	if (!normpath(trg, sizeof trg - PTHMAXSUF, targ, prog.wd))
-		perrfand(return 0, "'%s': %s", targ, strerror(ENAMETOOLONG));
+		perrfand(return 0, "%s: %s", targ, strerror(ENAMETOOLONG));
 
-	return redofn(trg, prog.lvl, prog.pdepfd);
+	return (*redofn)(trg, prog.lvl, prog.pdepfd);
 }
 
 void
-jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
+jredo(redofnt *redofn, char *trg, FPARS(int, *paral, last))
 {
 	struct pollfd pfd;
 	ssize_t r;
 	pid_t cld; /* child's pid, if any */
-	int s, ja, msg, st;
-
-#define ex(V) \
-	do { \
-		s = (V); \
-		goto end; \
-	} while (0)
+	int ja, msg, st, rv;
 
 	cld = -1;
 	if (!last || *paral) {
@@ -990,66 +938,65 @@ jredo(RedoFn redofn, char *trg, FPARS(int, *paral, last))
 			pfd.fd = prog.jmrfd;
 			pfd.events = POLLIN;
 			if ((ja = poll(&pfd, 1, 0)) < 0)
-				perrnand(ex(1), "poll");
+				perrnand(RET(1), "poll");
 		} else {
 			msg = JOBNEW;
 			if (dowrite(prog.jmwfd, &msg, sizeof msg) < 0)
-				perrnand(ex(1), "write");
+				perrnand(RET(1), "write");
 			if ((r = read(prog.jmrfd, &msg, sizeof msg)) < 0)
-				perrn("read");
-			else if (!r) /* job manager closed the pipe */
-				ex(1);
+				perrnand(RET(1), "read");
+			if (!r) /* job manager closed the pipe */
+				RET(1);
 		}
 		if (!last && (*paral || ja)) {
 			if ((cld = fork()) < 0)
-				perrnand(ex(1), "fork");
-			else if (!cld) {
+				perrnand(RET(1), "fork");
+			if (!cld) {
 				*paral = 1;
 				prog.pid = getpid();
 				return;
 			}
 		}
 	}
-	s = fredo(redofn, trg);
-	if (!s || *paral) {
-		msg = s ? JOBDONE : JOBERR;
+	rv = fredo(redofn, trg);
+	if (!rv || *paral) {
+		msg = rv ? JOBDONE : JOBERR;
 		if (dowrite(prog.jmwfd, &msg, sizeof msg) < 0)
-			perrnand(ex(1), "write");
+			perrnand(RET(1), "write");
 	}
 	if (!*paral) {
 		if (cld >= 0)
-			ex(!s);
-		if (s)
+			RET(!rv);
+		if (rv)
 			return;
 		exit(1);
 	}
-	ex(!s);
-end:
+	RET(!rv);
+befret:
 	if (cld >= 0) {
 		if (waitpid(cld, &st, 0) < 0)
-			perrnand(s = 1, "waitpid");
-		s = s || !WIFEXITED(st) || WEXITSTATUS(st);
+			perrnand(rv = 1, "waitpid");
+		rv = rv || !WIFEXITED(st) || WEXITSTATUS(st);
 	}
-	exit(s);
-#undef ex
+	exit(rv);
 }
 
 void
-vredo(RedoFn redofn, char *trgv[])
+vredo(redofnt *redofn, int trgc, char *trgv[])
 {
-	for (; *trgv; trgv++)
+	for (; trgc > 0; trgc--, trgv++)
 		if (!fredo(redofn, *trgv))
 			exit(1);
 }
 
 void
-vjredo(RedoFn redofn, char *trgv[])
+vjredo(redofnt *redofn, int trgc, char *trgv[])
 {
 	int paral;
 
 	paral = 0;
-	for (; *trgv; trgv++)
-		jredo(redofn, *trgv, &paral, !trgv[1]);
+	for (; trgc > 0; trgc--, trgv++)
+		jredo(redofn, *trgv, &paral, trgc > 1);
 }
 
 /* spawn job manager, non-jm child returns */
@@ -1115,7 +1062,7 @@ setup(int jobsn)
 	} else {
 		prog.withjm = 1;
 		if ((prog.jmwfd = envgetfd(enm.jmwfd)) < 0)
-			ferrf("invalid environment values for '%s' and '%s'",
+			ferrf("invalid environment values for %s and %s",
 				enm.jmrfd, enm.jmwfd);
 	}
 
@@ -1137,11 +1084,11 @@ setup(int jobsn)
 			ferrn("envseti");
 	} else {
 		if ((prog.toppid = envgeti(enm.toppid, 1, INT_MAX, -1)) < 0)
-			ferrf("invalid environment variable '%s'", enm.toppid);
+			ferrf("invalid environment variable %s", enm.toppid);
 		if ((prog.pdepfd = envgetfd(enm.pdepfd)) < 0)
-			ferrf("invalid environment variable '%s'", enm.pdepfd);
+			ferrf("invalid environment variable %s", enm.pdepfd);
 		if (!(e = getenv(enm.topwd)))
-			ferrf("invalid environment values for '%s' and '%s'",
+			ferrf("invalid environment values for %s and %s",
 				enm.lvl, enm.topwd);
 		strlcpy(prog.topwd, e, sizeof prog.topwd);
 	}
@@ -1162,7 +1109,7 @@ usage(void)
 int
 main(int argc, char *argv[])
 {
-	RedoFn redofn;
+	redofnt *redofn;
 	int jobsn;
 	char *s;
 
@@ -1174,7 +1121,7 @@ main(int argc, char *argv[])
 		if (!(s = ARGF()))
 			perrfand(usage(), "missing argument for -j");
 		if ((jobsn = strtoint(s, 0, INT_MAX, -1)) < 0)
-			perrfand(usage(), "'%s': Invalid number", s);
+			perrfand(usage(), "%s: Invalid number", s);
 		break;
 	default:
 		perrfand(usage(), "-%c: Wrong option", ARGC());
@@ -1191,13 +1138,13 @@ main(int argc, char *argv[])
 	else if (!strcmp(prognm, "redo-infofor"))
 		redofn = &redoinfofor;
 	else
-		ferrf("'%s': not implemented", prognm);
+		ferrf("%s: not implemented", prognm);
 
 	setup(jobsn - 1);
 	if (prog.withjm)
-		vjredo(redofn, argv);
+		vjredo(redofn, argc, argv);
 	else
-		vredo(redofn, argv);
+		vredo(redofn, argc, argv);
 
 	return 0;
 }
