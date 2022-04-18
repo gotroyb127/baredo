@@ -12,36 +12,27 @@
 		eprintf("%s: ", prognm)
 #endif
 
-#define perrn(...)\
+#define perrnand(DOWHAT, ...)\
 	do {\
 		int errnsv_ = errno;\
 		perrpref();\
 		eprintf(__VA_ARGS__);\
-		errno = errnsv_;\
-		perror("");\
-	} while (0)
-#define perrf(...)\
-	do {\
-		perrpref();\
-		eprintf(__VA_ARGS__);\
-		eprintf("\n");\
-	} while (0)
-
-#define perrnand(DOWHAT, ...)\
-	do {\
-		perrn(__VA_ARGS__);\
+		eprintf(": %s\n", strerror(errnsv_));\
 		DOWHAT;\
 	} while (0)
 #define perrfand(DOWHAT, ...)\
 	do {\
-		perrf(__VA_ARGS__);\
+		perrpref();\
+		eprintf(__VA_ARGS__);\
+		eprintf("\n");\
 		DOWHAT;\
 	} while (0)
 
-#define ferrn(...)\
-	perrnand(exit(1), __VA_ARGS__)
-#define ferrf(...)\
-	perrfand(exit(1), __VA_ARGS__)
+#define perrn(...) perrnand(, __VA_ARGS__)
+#define perrf(...) perrfand(, __VA_ARGS__)
+
+#define ferrn(...) perrnand(exit(1), __VA_ARGS__)
+#define ferrf(...) perrfand(exit(1), __VA_ARGS__)
 
 #define RET(V)\
 	do {\

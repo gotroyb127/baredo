@@ -22,16 +22,10 @@ int
 jmrun(FPARS(int, jobsn, rfd, wfd))
 {
 	unsigned int maxrjs, rjobs, pjobs;
-	int r, msg;
-
-#define ret(V) \
-	do { \
-		r = (V); \
-		goto end; \
-	} while (0)
+	int rv, msg;
 
 	if (setjmp(jbuf))
-		ret(0);
+		RET(0);
 
 	maxrjs = jobsn > 0 ? jobsn : UINT_MAX;
 	rjobs = pjobs = 0;
@@ -40,9 +34,9 @@ jmrun(FPARS(int, jobsn, rfd, wfd))
 	while (1) {
 		switch (read(rfd, &msg, sizeof msg)) {
 		case -1:
-			perrnand(ret(0), "read");
+			perrnand(RET(0), "read");
 		case 0:
-			ret(1);
+			RET(1);
 		}
 		switch (msg) {
 		case JOBNEW:
@@ -56,19 +50,18 @@ jmrun(FPARS(int, jobsn, rfd, wfd))
 			if (pjobs)
 				put(wfd, 1), pjobs--;
 			else if (!rjobs--)
-				perrfand(ret(0), "Invalid message: no jobs are running");
+				perrfand(RET(0), "Invalid message: no jobs are running");
 			else if (rjobs == maxrjs-1)
 				put(wfd, 1);
 			break;
 		case JOBERR:
 		default:
-			ret(0);
+			RET(0);
 		}
 	}
-	ret(1);
-end:
+	RET(1);
+befret:
 	if (close(rfd) < 0 || close(wfd) < 0)
-		perrnand(r = 0, "close");
-	return r;
-#undef ret
+		perrnand(rv = 0, "close");
+	return rv;
 }

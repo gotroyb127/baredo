@@ -118,7 +118,7 @@ intern int redoifchange(char *trg, FPARS(int, lvl, pdepfd));
 intern int redoifcreate(char *trg, FPARS(int, lvl, pdepfd));
 intern int redoinfofor(char *trg, FPARS(int, lvl, pdepfd));
 intern int fredo(redofnt *, char *targ);
-intern void jredo(redofnt *, char *trg, FPARS(int, *paral, last));
+intern void jredo(redofnt *, char *trg, FPARS(int, *paral, hnext));
 intern void vredo(redofnt *, int trgc, char *trgv[]);
 intern void vjredo(redofnt *, int trgc, char *trgv[]);
 intern void spawnjm(int jobsn);
@@ -925,7 +925,7 @@ fredo(redofnt *redofn, char *targ)
 }
 
 void
-jredo(redofnt *redofn, char *trg, FPARS(int, *paral, last))
+jredo(redofnt *redofn, char *trg, FPARS(int, *paral, hnext))
 {
 	struct pollfd pfd;
 	ssize_t r;
@@ -933,7 +933,7 @@ jredo(redofnt *redofn, char *trg, FPARS(int, *paral, last))
 	int ja, msg, st, rv;
 
 	cld = -1;
-	if (!last || *paral) {
+	if (hnext || *paral) {
 		if (!*paral) { /* check whether a is job available */
 			pfd.fd = prog.jmrfd;
 			pfd.events = POLLIN;
@@ -948,7 +948,7 @@ jredo(redofnt *redofn, char *trg, FPARS(int, *paral, last))
 			if (!r) /* job manager closed the pipe */
 				RET(1);
 		}
-		if (!last && (*paral || ja)) {
+		if (hnext && (*paral || ja)) {
 			if ((cld = fork()) < 0)
 				perrnand(RET(1), "fork");
 			if (!cld) {
@@ -958,8 +958,7 @@ jredo(redofnt *redofn, char *trg, FPARS(int, *paral, last))
 			}
 		}
 	}
-	rv = fredo(redofn, trg);
-	if (!rv || *paral) {
+	if (!(rv = fredo(redofn, trg)) || *paral) {
 		msg = rv ? JOBDONE : JOBERR;
 		if (dowrite(prog.jmwfd, &msg, sizeof msg) < 0)
 			perrnand(RET(1), "write");
@@ -995,7 +994,7 @@ vjredo(redofnt *redofn, int trgc, char *trgv[])
 	int paral;
 
 	paral = 0;
-	for (; trgc > 0; trgc--, trgv++)
+	for (; trgc; trgc--, trgv++)
 		jredo(redofn, *trgv, &paral, trgc > 1);
 }
 
