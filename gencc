@@ -1,26 +1,14 @@
 #!/bin/sh
 
 cc=${CC:-cc}
-cflags='-std=c99 -Wpedantic -Wall -Werror'
+cflags='-std=c99'
 cppflags='-D_POSIX_C_SOURCE=200809L'
 
 dbg=${DEBUG:-n}
 
-# silence useless warnings that make the compilation fail
-# because of -Werror
-if $cc --version | grep GCC >/dev/null
-then
-	cflags="$cflags -Wno-format-overflow"
-elif $cc --version | grep clang >/dev/null
-then
-	# clang warns for unused command line arguments when called by
-	# musl-clang
-	cflags="$cflags -Wno-unused-command-line-argument"
-fi
-
 if [ "$dbg" = y ]
 then
-	cflags="$cflags -O0 -g"
+	cflags="$cflags -O0 -g -Wpedantic -Wall"
 	cppflags="$cppflags -DDBG=1"
 else
 	cflags="$cflags -O2"
